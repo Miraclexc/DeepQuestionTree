@@ -1,0 +1,37 @@
+app:
+  debug: true
+  mock_llm: false  # 是否使用假 LLM
+  env: "development"  # development / production
+
+llm:
+  generation_model: "gemini-3-pro-high"  # 用于生成回答的模型
+  decision_model: "gemini-3-flash"     # 用于决策评估的模型
+  api_key: "${OPENAI_API_KEY}"  # 支持从环境变量读取
+  base_url: "http://127.0.0.1:8045/v1"
+  timeout: 60
+  max_retries: 3
+
+mcts:
+  max_depth: 10          # 最大提问深度
+  branch_factor: 5      # 每次生成多少个候选问题 (k)
+  max_simulations: 20   # 总模拟次数 (N)
+  exploration_constant: 1.414  # UCT 公式中的 C 值
+  save_interval_steps: 5       # 每运行几步自动保存一次
+  parallel_workers: 3          # 并行提问/模拟的 worker 数量
+
+embedding:
+  use_local: true       # 优先使用本地模型
+  model_path: "DMetaSoul/sbert-chinese-general-v2-distill"
+  api_model: "text-embedding-ada-002"  # API 模式下使用的模型
+  similarity_threshold: 0.95  # 重复问题判定的相似度阈值
+
+storage:
+  data_dir: "data"
+  sessions_dir: "data/sessions"
+  logs_dir: "data/logs"
+
+logging:
+  level: "INFO"  # DEBUG / INFO / WARNING / ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file_rotation: "daily"
+  json_format: false # 是否使用 JSON 格式输出日志（便于机器解析）

@@ -1,0 +1,35 @@
+# Core dependencies
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# Web framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+
+# LLM interaction
+openai>=1.0.0
+tenacity>=8.2.0
+
+# Embeddings
+sentence-transformers>=2.2.0
+numpy>=1.24.0
+
+# Configuration
+PyYAML>=6.0.0
+python-dotenv>=1.0.0
+
+# Template rendering
+Jinja2>=3.1.0
+
+# Utilities
+python-multipart>=0.0.6
+colorlog>=6.0.0
+
+# Development dependencies
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-asyncio>=0.21.0
+black>=23.0.0
+isort>=5.12.0
+mypy>=1.5.0
+httpx>=0.25.0
