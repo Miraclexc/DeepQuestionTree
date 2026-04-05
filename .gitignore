@@ -50,6 +50,9 @@ src/frontend/node_modules/
 src/frontend/.next/
 src/frontend/out/
 src/frontend/.env.local
+src/frontend/coverage/
+src/frontend/playwright-report/
+src/frontend/test-results/
 
 # OS
 .DS_Store
@@ -57,6 +60,7 @@ Thumbs.db
 
 # Testing
 .coverage
+.coverage*
 .pytest_cache/
 htmlcov/
 

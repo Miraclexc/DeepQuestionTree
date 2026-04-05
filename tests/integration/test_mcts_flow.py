@@ -2,14 +2,15 @@
 集成测试 - MCTS 流程
 测试完整的 MCTS 迭代流程
 """
+
 import pytest
 
 from src.backend.core.mcts_engine import MCTSEngine
-from src.backend.core.schema import SessionData, Node, QAInteraction
-from src.backend.modules.questioner import Questioner
-from src.backend.modules.pruner import Pruner
-from src.backend.llm.mock_client import MockClient
+from src.backend.core.schema import Node, QAInteraction, SessionData
 from src.backend.llm.embedding import get_embedding_manager
+from src.backend.llm.mock_client import MockClient
+from src.backend.modules.pruner import Pruner
+from src.backend.modules.questioner import Questioner
 
 
 @pytest.mark.integration
@@ -30,8 +31,8 @@ class TestMCTSFlow:
             interaction=QAInteraction(
                 question="探索人工智能技术的未来发展",
                 answer="人工智能技术正在快速发展，涉及多个领域...",
-                summary="AI 技术发展概况"
-            )
+                summary="AI 技术发展概况",
+            ),
         )
         session.add_node(root_node)
 
@@ -52,7 +53,7 @@ class TestMCTSFlow:
             "engine": engine,
             "llm_client": llm_client,
             "questioner": questioner,
-            "pruner": pruner
+            "pruner": pruner,
         }
 
     async def test_mcts_initialization(self, setup_mcts_environment):
@@ -75,7 +76,7 @@ class TestMCTSFlow:
         child1 = Node(
             parent_id=session.root_node_id,
             depth=1,
-            interaction=QAInteraction(question="问题1", answer="回答1")
+            interaction=QAInteraction(question="问题1", answer="回答1"),
         )
         child1.state.visit_count = 5
         child1.state.value_sum = 30.0
@@ -83,7 +84,7 @@ class TestMCTSFlow:
         child2 = Node(
             parent_id=session.root_node_id,
             depth=1,
-            interaction=QAInteraction(question="问题2", answer="回答2")
+            interaction=QAInteraction(question="问题2", answer="回答2"),
         )
         child2.state.visit_count = 3
         child2.state.value_sum = 24.0
@@ -158,7 +159,7 @@ class TestMCTSFlow:
             node = Node(
                 parent_id=session.root_node_id,
                 depth=1,
-                interaction=QAInteraction(question=f"问题{i}", answer=f"回答{i}")
+                interaction=QAInteraction(question=f"问题{i}", answer=f"回答{i}"),
             )
             node.state.visit_count = i + 1
             node.state.value_sum = (i + 1) * 5.0
@@ -181,14 +182,14 @@ class TestMCTSFlow:
         child1 = Node(
             parent_id=session.root_node_id,
             depth=1,
-            interaction=QAInteraction(question="问题1", answer="回答1")
+            interaction=QAInteraction(question="问题1", answer="回答1"),
         )
         child1.state.visit_count = 10  # 访问最多
 
         child2 = Node(
             parent_id=session.root_node_id,
             depth=1,
-            interaction=QAInteraction(question="问题2", answer="回答2")
+            interaction=QAInteraction(question="问题2", answer="回答2"),
         )
         child2.state.visit_count = 5
 

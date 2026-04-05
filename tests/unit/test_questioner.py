@@ -2,14 +2,14 @@
 单元测试 - Questioner 模块
 测试问题生成、价值评估、重复检测功能
 """
+
 import pytest
 
-from src.backend.modules.questioner import Questioner
 from src.backend.core.schema import Fact
+from src.backend.modules.questioner import Questioner
 
 
 @pytest.mark.unit
-@pytest.mark.asyncio
 class TestQuestioner:
     """测试提问者模块"""
 
@@ -22,16 +22,13 @@ class TestQuestioner:
         """测试基本的候选问题生成"""
         context_facts = [
             Fact(content="深度学习是机器学习的子领域", source_node_id="node_1"),
-            Fact(content="神经网络包含多层", source_node_id="node_1")
+            Fact(content="神经网络包含多层", source_node_id="node_1"),
         ]
         current_answer = "深度学习使用多层神经网络..."
         goal = "了解AI技术"
 
         questions = await questioner.generate_candidates(
-            context_facts=context_facts,
-            current_answer=current_answer,
-            goal=goal,
-            k=3
+            context_facts=context_facts, current_answer=current_answer, goal=goal, k=3
         )
 
         # 应该生成至少一些问题
@@ -71,9 +68,7 @@ class TestQuestioner:
         goal = "了解深度学习"
 
         score = await questioner.evaluate_question_value(
-            question=question,
-            known_facts=known_facts,
-            goal=goal
+            question=question, known_facts=known_facts, goal=goal
         )
 
         # 分数应该在 0-10 范围内
@@ -199,7 +194,6 @@ class TestQuestioner:
 
 
 @pytest.mark.unit
-@pytest.mark.asyncio
 class TestQuestionerEdgeCases:
     """测试 Questioner 的边界情况"""
 
@@ -210,10 +204,7 @@ class TestQuestionerEdgeCases:
     async def test_generate_candidates_empty_context(self, questioner):
         """测试空上下文"""
         questions = await questioner.generate_candidates(
-            context_facts=[],
-            current_answer="",
-            goal="测试",
-            k=3
+            context_facts=[], current_answer="", goal="测试", k=3
         )
 
         # 应该返回列表（可能是默认问题）
@@ -222,9 +213,7 @@ class TestQuestionerEdgeCases:
     async def test_evaluate_question_empty_facts(self, questioner):
         """测试无已知事实的评估"""
         score = await questioner.evaluate_question_value(
-            question="测试问题",
-            known_facts=[],
-            goal="测试目标"
+            question="测试问题", known_facts=[], goal="测试目标"
         )
 
         # 应该返回有效分数

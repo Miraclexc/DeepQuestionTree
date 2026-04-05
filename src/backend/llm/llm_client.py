@@ -2,14 +2,20 @@
 OpenAI 兼容 LLM 客户端实现
 支持 OpenAI、DeepSeek、Moonshot 等所有兼容 OpenAI API 的服务
 """
+
 import json
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List, Optional
 
 import openai
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
-from .client_interface import BaseLLMClient, CompletionResponse
 from ..config_loader import get_settings
+from .client_interface import BaseLLMClient, CompletionResponse
 
 
 class OpenAICompatibleClient(BaseLLMClient):
@@ -24,7 +30,7 @@ class OpenAICompatibleClient(BaseLLMClient):
             api_key=settings.llm.api_key,
             base_url=settings.llm.base_url,
             timeout=settings.llm.timeout,
-            max_retries=settings.llm.max_retries
+            max_retries=settings.llm.max_retries,
         )
 
         self.generation_model = settings.llm.generation_model
@@ -39,14 +45,14 @@ class OpenAICompatibleClient(BaseLLMClient):
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((openai.RateLimitError, openai.APITimeoutError))
+        retry=retry_if_exception_type((openai.RateLimitError, openai.APITimeoutError)),
     )
     async def chat_completion(
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
-        json_mode: bool = False
+        json_mode: bool = False,
     ) -> CompletionResponse:
         """
         执行对话请求，包含自动重试逻辑
@@ -54,7 +60,9 @@ class OpenAICompatibleClient(BaseLLMClient):
         try:
             # 根据用途选择模型
             model = self.generation_model
-            if "评估" in messages[-1].get("content", "") or "score" in messages[-1].get("content", ""):
+            if "评估" in messages[-1].get("content", "") or "score" in messages[-1].get(
+                "content", ""
+            ):
                 model = self.decision_model
 
             # 设置响应格式
@@ -66,7 +74,7 @@ class OpenAICompatibleClient(BaseLLMClient):
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                response_format=response_format
+                response_format=response_format,
             )
 
             # 提取内容
@@ -78,16 +86,13 @@ class OpenAICompatibleClient(BaseLLMClient):
             if response.usage:
                 tokens = response.usage.total_tokens
                 cost = self._estimate_cost(model, tokens)
-                
+
                 self.total_tokens_used += tokens
                 self.total_cost += cost
             self.request_count += 1
 
             return CompletionResponse(
-                content=content,
-                model=model,
-                tokens=tokens,
-                cost=cost
+                content=content, model=model, tokens=tokens, cost=cost
             )
 
         except openai.AuthenticationError as e:
@@ -102,7 +107,7 @@ class OpenAICompatibleClient(BaseLLMClient):
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((openai.RateLimitError, openai.APITimeoutError))
+        retry=retry_if_exception_type((openai.RateLimitError, openai.APITimeoutError)),
     )
     async def get_embedding(self, text: str) -> List[float]:
         """
@@ -110,14 +115,15 @@ class OpenAICompatibleClient(BaseLLMClient):
         """
         try:
             response = await self.client.embeddings.create(
-                model=self.embedding_model,
-                input=text
+                model=self.embedding_model, input=text
             )
 
             # 更新使用统计
             if response.usage:
                 self.total_tokens_used += response.usage.total_tokens
-                self.total_cost += self._estimate_cost(self.embedding_model, response.usage.total_tokens)
+                self.total_cost += self._estimate_cost(
+                    self.embedding_model, response.usage.total_tokens
+                )
             self.request_count += 1
 
             return response.data[0].embedding
@@ -131,7 +137,8 @@ class OpenAICompatibleClient(BaseLLMClient):
             "total_tokens_used": self.total_tokens_used,
             "total_cost_usd": self.total_cost,
             "total_requests": self.request_count,
-            "average_tokens_per_request": self.total_tokens_used / max(self.request_count, 1)
+            "average_tokens_per_request": self.total_tokens_used
+            / max(self.request_count, 1),
         }
 
     async def reset_usage_stats(self) -> None:

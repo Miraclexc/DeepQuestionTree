@@ -1,9 +1,13 @@
-import { Node } from "@/lib/types";
-import { X, Brain, ExternalLink, Lightbulb, Target } from "lucide-react";
+import { NodeDetail } from "@/lib/types";
+import { Brain, ExternalLink, Target, X } from "lucide-react";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { NodeFactsSection } from "./node-panel/NodeFactsSection";
+import { NodeMetadataSection } from "./node-panel/NodeMetadataSection";
+import { NodePathSection } from "./node-panel/NodePathSection";
+import { NodeStatistics } from "./node-panel/NodeStatistics";
 
 interface NodePanelProps {
-    node: Node | null;
+    node: NodeDetail | null;
     onClose: () => void;
 }
 
@@ -19,6 +23,7 @@ export function NodePanel({ node, onClose }: NodePanelProps) {
                 </h3>
                 <button
                     onClick={onClose}
+                    aria-label="Close node details"
                     className="rounded-full p-1 hover:bg-muted transition-colors"
                 >
                     <X className="h-4 w-4 text-muted-foreground" />
@@ -26,17 +31,7 @@ export function NodePanel({ node, onClose }: NodePanelProps) {
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-6">
-                {/* Basic Stats */}
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="rounded-lg bg-muted/50 p-3 text-center">
-                        <div className="text-xs text-muted-foreground uppercase">Visits</div>
-                        <div className="text-xl font-bold text-primary">{node.state?.visit_count ?? 0}</div>
-                    </div>
-                    <div className="rounded-lg bg-muted/50 p-3 text-center">
-                        <div className="text-xs text-muted-foreground uppercase">Value</div>
-                        <div className="text-xl font-bold text-primary">{node.state?.average_value?.toFixed(2) ?? "0.00"}</div>
-                    </div>
-                </div>
+                <NodeStatistics node={node} />
 
                 {/* Question */}
                 <div className="space-y-2">
@@ -60,48 +55,9 @@ export function NodePanel({ node, onClose }: NodePanelProps) {
                     </div>
                 </div>
 
-                {/* Facts */}
-                {node.new_facts && node.new_facts.length > 0 && (
-                    <div className="space-y-2">
-                        <h4 className="flex items-center gap-2 text-sm font-medium text-primary">
-                            <Lightbulb className="h-4 w-4" />
-                            Facts Extracted ({node.new_facts.length})
-                        </h4>
-                        <ul className="space-y-2">
-                            {node.new_facts.map(fact => (
-                                <li key={fact.id} className="text-xs bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-200 p-2 rounded border border-yellow-200 dark:border-yellow-800/50">
-                                    <MarkdownRenderer content={fact.content} />
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                )}
-
-                {/* Metadata */}
-                <div className="pt-4 border-t text-xs text-muted-foreground space-y-1">
-                    <div className="flex justify-between">
-                        <span>ID:</span>
-                        <span className="font-mono">{node.id.slice(0, 8)}...</span>
-                    </div>
-                    <div className="flex justify-between">
-                        <span>Parent ID:</span>
-                        <span className="font-mono">{node.parent_id ? `${node.parent_id.slice(0, 8)}...` : "None"}</span>
-                    </div>
-                    <div className="flex justify-between">
-                        <span>Created:</span>
-                        <span>{new Date(node.created_at).toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between">
-                        <span>Pruned:</span>
-                        <span className={node.is_pruned ? "text-destructive font-bold" : ""}>{node.is_pruned ? "YES" : "NO"}</span>
-                    </div>
-                    {node.prune_reason && (
-                        <div className="flex justify-between text-destructive">
-                            <span>Reason:</span>
-                            <span>{node.prune_reason}</span>
-                        </div>
-                    )}
-                </div>
+                <NodeFactsSection facts={node.new_facts} />
+                <NodePathSection path={node.path} />
+                <NodeMetadataSection node={node} />
             </div>
         </div>
     );

@@ -2,9 +2,10 @@
 整合模块
 负责生成最终报告，整合所有探索结果
 """
-from typing import List, Dict, Any, Optional
 
-from ..core.schema import Node, SessionData, Fact
+from typing import Any, Dict, List, Optional
+
+from ..core.schema import Fact, Node, SessionData
 from ..llm.client_interface import BaseLLMClient
 from ..llm.prompt_manager import get_prompt_manager
 from ..utils.logger import get_logger
@@ -18,11 +19,7 @@ class Integrator:
     负责生成最终的综合性报告
     """
 
-    def __init__(
-        self,
-        llm_client: BaseLLMClient,
-        prompt_manager=None
-    ):
+    def __init__(self, llm_client: BaseLLMClient, prompt_manager=None):
         """
         初始化整合器
 
@@ -34,9 +31,7 @@ class Integrator:
         self.prompts = prompt_manager or get_prompt_manager()
 
     async def generate_final_report(
-        self,
-        session: SessionData,
-        max_facts: int = 50
+        self, session: SessionData, max_facts: int = 50
     ) -> Dict[str, Any]:
         """
         生成最终的综合性报告
@@ -54,8 +49,8 @@ class Integrator:
 
             # 2. 提取最佳探索路径
             best_path = session.get_best_path()
-            path_analysis = self._analyze_path(best_path)
-            
+            path_analysis = self._analyze_path(best_path, session.global_goal)
+
             # --- 新增步骤：分析被剪枝的路径 ---
             pruned_insights = await self._analyze_pruned_paths(session)
 
@@ -69,13 +64,12 @@ class Integrator:
                 facts_analysis,
                 path_analysis,
                 key_insights,
-                pruned_insights
+                pruned_insights,
             )
 
             # 5. 生成执行摘要
             executive_summary = await self._generate_executive_summary(
-                session.global_goal,
-                report
+                session.global_goal, report
             )
 
             # 6. 建议后续探索方向
@@ -93,11 +87,11 @@ class Integrator:
                 "key_insights": key_insights,
                 "pruned_insights": pruned_insights,
                 "statistics": self._get_session_statistics(session),
-                "llm_stats": llm_stats, # 新增字段
+                "llm_stats": llm_stats,  # 新增字段
                 "facts_analysis": facts_analysis,
                 "path_analysis": path_analysis,
                 "suggestions": suggestions,
-                "generated_at": session.updated_at.isoformat()
+                "generated_at": session.updated_at.isoformat(),
             }
 
             return final_report
@@ -106,11 +100,7 @@ class Integrator:
             logger.error(f"生成最终报告失败: {e}")
             return self._get_error_report(session, str(e))
 
-    def _analyze_facts(
-        self,
-        facts: List[Fact],
-        max_facts: int
-    ) -> Dict[str, Any]:
+    def _analyze_facts(self, facts: List[Fact], max_facts: int) -> Dict[str, Any]:
         """
         分析收集到的事实
         """
@@ -118,13 +108,13 @@ class Integrator:
         sorted_facts = sorted(facts, key=lambda f: f.confidence, reverse=True)
 
         # 分类事实（简单的关键词分类）
-        categories = {
+        categories: dict[str, list[Fact]] = {
             "技术原理": [],
             "应用场景": [],
             "优势特点": [],
             "风险挑战": [],
             "成本效益": [],
-            "其他": []
+            "其他": [],
         }
 
         for fact in sorted_facts[:max_facts]:
@@ -141,17 +131,20 @@ class Integrator:
         stats = {
             "total_facts": len(facts),
             "analyzed_facts": min(len(facts), max_facts),
-            "average_confidence": sum(f.confidence for f in facts) / len(facts) if facts else 0,
+            "average_confidence": (
+                sum(f.confidence for f in facts) / len(facts) if facts else 0
+            ),
             "high_confidence_facts": sum(1 for f in facts if f.confidence >= 0.9),
             "categories": {
                 k: {"count": len(v), "facts": [f.content for f in v[:5]]}
-                for k, v in categories.items() if v
-            }
+                for k, v in categories.items()
+                if v
+            },
         }
 
         return stats
 
-    def _analyze_path(self, path: List[Node]) -> Dict[str, Any]:
+    def _analyze_path(self, path: List[Node], goal: str) -> Dict[str, Any]:
         """
         分析最佳探索路径
         """
@@ -159,60 +152,62 @@ class Integrator:
             return {"error": "没有探索路径"}
 
         # 路径统计
-        stats = {
-            "depth": len(path) - 1,
-            "total_visits": sum(n.state.visit_count for n in path),
-            "average_value": sum(n.state.average_value for n in path) / len(path),
-            "key_questions": [],
-            "milestones": []
-        }
+        key_questions: list[dict[str, Any]] = []
+        milestones: list[dict[str, Any]] = []
 
         # 提取关键问题（高价值节点）
         for node in path:
             if node.interaction and node.state.average_value >= 7.0:
-                stats["key_questions"].append({
-                    "question": node.interaction.question,
-                    "value": node.state.average_value,
-                    "depth": node.depth
-                })
+                key_questions.append(
+                    {
+                        "question": node.interaction.question,
+                        "value": node.state.average_value,
+                        "depth": node.depth,
+                    }
+                )
 
         # 识别里程碑节点
         for i, node in enumerate(path):
             if i == 0:
-                stats["milestones"].append({
-                    "type": "起点",
-                    "question": session.global_goal if 'session' in locals() else "初始问题",
-                    "depth": 0
-                })
+                milestones.append({"type": "起点", "question": goal, "depth": 0})
             elif node.is_pruned:
-                stats["milestones"].append({
-                    "type": "剪枝点",
-                    "question": node.interaction.question if node.interaction else "N/A",
-                    "reason": node.prune_reason
-                })
+                milestones.append(
+                    {
+                        "type": "剪枝点",
+                        "question": (
+                            node.interaction.question if node.interaction else "N/A"
+                        ),
+                        "reason": node.prune_reason,
+                    }
+                )
             elif node.is_terminal:
-                stats["milestones"].append({
-                    "type": "终点",
-                    "question": node.interaction.question if node.interaction else "N/A",
-                    "depth": node.depth
-                })
+                milestones.append(
+                    {
+                        "type": "终点",
+                        "question": (
+                            node.interaction.question if node.interaction else "N/A"
+                        ),
+                        "depth": node.depth,
+                    }
+                )
 
-        return stats
+        return {
+            "depth": len(path) - 1,
+            "total_visits": sum(n.state.visit_count for n in path),
+            "average_value": sum(n.state.average_value for n in path) / len(path),
+            "key_questions": key_questions,
+            "milestones": milestones,
+        }
 
     async def _extract_key_insights(
-        self,
-        session: SessionData,
-        best_path: List[Node]
+        self, session: SessionData, best_path: List[Node]
     ) -> List[str]:
         """
         提取关键见解（使用 JSON 格式）
         """
         try:
             # 收集高置信度事实
-            high_conf_facts = [
-                f for f in session.global_facts
-                if f.confidence >= 0.8
-            ]
+            high_conf_facts = [f for f in session.global_facts if f.confidence >= 0.8]
 
             if not high_conf_facts:
                 return []
@@ -221,16 +216,12 @@ class Integrator:
             facts_text = "\n".join([f"- {f.content}" for f in high_conf_facts[:30]])
 
             # 渲染提取见解的 Prompt
-            prompt = self.prompts.render(
-                "extract_key_insights",
-                facts_text=facts_text
-            )
+            prompt = self.prompts.render("extract_key_insights", facts_text=facts_text)
 
             # 调用 LLM
             messages = [{"role": "user", "content": prompt}]
             response = await self.llm.chat_completion(
-                messages=messages,
-                temperature=0.7 # 提高创造性
+                messages=messages, temperature=0.7  # 提高创造性
             )
 
             # 解析见解 (JSON)
@@ -240,29 +231,27 @@ class Integrator:
             logger.error(f"提取关键见解失败: {e}")
             return []
 
-    async def _suggest_next_steps(
-        self,
-        session: SessionData
-    ) -> List[str]:
+    async def _suggest_next_steps(self, session: SessionData) -> List[str]:
         """
         建议后续探索方向 (使用 LLM 生成)
         """
         try:
             # 准备事实概览
-            facts_summary = "\n".join([f"- {f.content}" for f in session.global_facts[:15]])
-            
+            facts_summary = "\n".join(
+                [f"- {f.content}" for f in session.global_facts[:15]]
+            )
+
             prompt = self.prompts.render(
                 "suggest_next_steps",
                 goal=session.global_goal,
-                facts_summary=facts_summary
+                facts_summary=facts_summary,
             )
-            
+
             messages = [{"role": "user", "content": prompt}]
             response = await self.llm.chat_completion(
-                messages=messages,
-                temperature=0.7
+                messages=messages, temperature=0.7
             )
-            
+
             return self._parse_json_list(response.content)
 
         except Exception as e:
@@ -273,21 +262,25 @@ class Integrator:
         """解析 JSON 列表响应"""
         import json
         import re
-        
+
         try:
             # 尝试直接解析
             return json.loads(response)
         except json.JSONDecodeError:
             try:
                 # 尝试提取代码块中的内容
-                match = re.search(r'\[.*\]', response, re.DOTALL)
+                match = re.search(r"\[.*\]", response, re.DOTALL)
                 if match:
                     return json.loads(match.group(0))
             except Exception:
                 pass
-        
+
         # 降级：简单的行处理
-        lines = [line.strip().strip('"').strip("'").strip(',').strip('- ') for line in response.split('\n') if line.strip()]
+        lines = [
+            line.strip().strip('"').strip("'").strip(",").strip("- ")
+            for line in response.split("\n")
+            if line.strip()
+        ]
         return [l for l in lines if len(l) > 5]
 
     def _get_session_statistics(self, session: SessionData) -> Dict:
@@ -298,7 +291,7 @@ class Integrator:
             "tree_depth": session.get_tree_depth(),
             "total_facts": len(session.global_facts),
             "active_nodes": len(session.get_active_nodes()),
-            "pruned_nodes": sum(1 for n in session.nodes.values() if n.is_pruned)
+            "pruned_nodes": sum(1 for n in session.nodes.values() if n.is_pruned),
         }
 
     async def _analyze_pruned_paths(self, session: SessionData) -> List[str]:
@@ -311,7 +304,7 @@ class Integrator:
                 reason = node.prune_reason or "未知原因"
                 summary = node.interaction.summary
                 pruned_summaries.append(f"路径片段 (因{reason}中止): {summary}")
-        return pruned_summaries[:5] # 只取前5个作为代表
+        return pruned_summaries[:5]  # 只取前5个作为代表
 
     async def _generate_report_content(
         self,
@@ -319,7 +312,7 @@ class Integrator:
         facts_analysis: Dict,
         path_analysis: Dict,
         key_insights: List[str],
-        pruned_insights: List[str]
+        pruned_insights: List[str],
     ) -> str:
         """
         生成完整报告内容
@@ -335,7 +328,11 @@ class Integrator:
             insights_text = "\n".join([f"- {insight}" for insight in key_insights])
 
             # 准备剪枝见解
-            pruned_text = "\n".join([f"- {insight}" for insight in pruned_insights]) if pruned_insights else "无显著剪枝记录"
+            pruned_text = (
+                "\n".join([f"- {insight}" for insight in pruned_insights])
+                if pruned_insights
+                else "无显著剪枝记录"
+            )
 
             # 渲染报告 Prompt
             prompt = self.prompts.render(
@@ -343,15 +340,12 @@ class Integrator:
                 goal=goal,
                 facts=facts_text,
                 main_paths=path_text,
-                key_insights=insights_text
+                key_insights=insights_text,
             )
-            
+
             # 生成报告
             messages = [{"role": "user", "content": prompt}]
-            report = await self.llm.chat_completion(
-                messages=messages,
-                temperature=0.3
-            )
+            report = await self.llm.chat_completion(messages=messages, temperature=0.3)
 
             return report.content
 
@@ -359,11 +353,7 @@ class Integrator:
             logger.error(f"生成报告内容失败: {e}")
             return f"报告生成失败: {str(e)}"
 
-    async def _generate_executive_summary(
-        self,
-        goal: str,
-        full_report: str
-    ) -> str:
+    async def _generate_executive_summary(self, goal: str, full_report: str) -> str:
         """
         生成执行摘要
         """
@@ -371,14 +361,11 @@ class Integrator:
             prompt = self.prompts.render(
                 "generate_executive_summary",
                 goal=goal,
-                report_content=full_report[:1000]
+                report_content=full_report[:1000],
             )
 
             messages = [{"role": "user", "content": prompt}]
-            summary = await self.llm.chat_completion(
-                messages=messages,
-                temperature=0.3
-            )
+            summary = await self.llm.chat_completion(messages=messages, temperature=0.3)
 
             return summary.content.strip()
 
@@ -395,7 +382,7 @@ class Integrator:
             "应用场景": ["应用", "场景", "案例", "用途", "行业"],
             "优势特点": ["优势", "特点", "好处", "优点", "强项"],
             "风险挑战": ["风险", "挑战", "问题", "困难", "缺陷"],
-            "成本效益": ["成本", "效益", "投资", "收益", "预算"]
+            "成本效益": ["成本", "效益", "投资", "收益", "预算"],
         }
 
         keywords = category_keywords.get(category, [])
@@ -439,20 +426,20 @@ class Integrator:
             if node.interaction:
                 model = node.interaction.model_used or "unknown"
                 tokens = node.interaction.tokens_used
-                
+
                 if model not in usage_by_model:
                     usage_by_model[model] = {"calls": 0, "tokens": 0}
-                
+
                 usage_by_model[model]["calls"] += 1
                 usage_by_model[model]["tokens"] += tokens
-                
+
                 total_calls += 1
                 total_tokens += tokens
 
         return {
             "total_calls": total_calls,
             "total_tokens": total_tokens,
-            "usage_by_model": usage_by_model
+            "usage_by_model": usage_by_model,
         }
 
     def _get_error_report(self, session: SessionData, error: str) -> Dict:
@@ -464,7 +451,7 @@ class Integrator:
             "partial_data": {
                 "facts_count": len(session.global_facts),
                 "nodes_count": len(session.nodes),
-                "simulations": session.total_simulations
+                "simulations": session.total_simulations,
             },
-            "generated_at": session.updated_at.isoformat()
+            "generated_at": session.updated_at.isoformat(),
         }

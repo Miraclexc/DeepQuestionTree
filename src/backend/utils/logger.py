@@ -2,14 +2,15 @@
 日志封装模块
 提供统一的日志记录接口，支持控制台和文件输出，支持 JSON 格式和上下文追踪
 """
+
+import json
 import logging
 import logging.handlers
 import sys
-import json
 import uuid
-from pathlib import Path
-from typing import Optional, Dict, Any
 from contextvars import ContextVar
+from pathlib import Path
+from typing import Any, Dict, Optional
 
 from ..config_loader import get_settings
 
@@ -35,7 +36,7 @@ class JSONFormatter(logging.Formatter):
         req_id = request_id_ctx.get()
         if req_id:
             log_data["request_id"] = req_id
-            
+
         sess_id = session_id_ctx.get()
         if sess_id:
             log_data["session_id"] = sess_id
@@ -82,33 +83,26 @@ class LLMTraceLogger:
             log_dir.mkdir(parents=True, exist_ok=True)
         except Exception:
             pass
-            
+
         # 生成带时间戳的文件名：llm_trace_YYYY-MM-DD_HH-MM-SS.log
         from datetime import datetime
+
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         log_file = log_dir / f"llm_trace_{timestamp}.log"
 
         # 使用 FileHandler 记录本次运行的日志
-        file_handler = logging.FileHandler(
-            filename=log_file,
-            encoding="utf-8"
-        )
-        
+        file_handler = logging.FileHandler(filename=log_file, encoding="utf-8")
+
         # LLM Trace logs are usually large text blobs, keep them readable (not JSON) by default
         file_formatter = logging.Formatter(
-            "%(asctime)s - %(levelname)s - %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S"
+            "%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
         )
         file_handler.setFormatter(file_formatter)
         file_handler.setLevel(logging.DEBUG)
         self.logger.addHandler(file_handler)
 
     def log_request(
-        self,
-        messages: list,
-        temperature: float,
-        model: str,
-        json_mode: bool = False
+        self, messages: list, temperature: float, model: str, json_mode: bool = False
     ) -> str:
         """记录 LLM 请求"""
         req_id = str(uuid.uuid4())[:8]
@@ -121,7 +115,9 @@ class LLMTraceLogger:
 
         for i, msg in enumerate(messages):
             log_msg += f"  {i+1}. Role: {msg['role']}\n"
-            log_msg += f"     Content: {msg['content'][:500]}...\n" # Truncate for log safety
+            log_msg += (
+                f"     Content: {msg['content'][:500]}...\n"  # Truncate for log safety
+            )
 
         self.logger.info(log_msg)
         return req_id
@@ -131,7 +127,7 @@ class LLMTraceLogger:
         request_id: str,
         response: str,
         tokens_used: Optional[int] = None,
-        error: Optional[str] = None
+        error: Optional[str] = None,
     ) -> None:
         """记录 LLM 响应"""
         log_msg = f"[{request_id}] RESPONSE\n"
@@ -172,7 +168,7 @@ def setup_logging():
         use_json = False
 
     level = getattr(logging, level_str, logging.INFO)
-    
+
     # 根日志记录器
     root_logger = logging.getLogger()
     root_logger.setLevel(level)
@@ -185,7 +181,7 @@ def setup_logging():
     # 1. 控制台处理器
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(level)
-    
+
     if use_json:
         console_formatter = JSONFormatter()
     else:
@@ -193,7 +189,7 @@ def setup_logging():
         console_formatter = logging.Formatter(
             "%(asctime)s - %(levelname)s - [%(name)s] - %(message)s"
         )
-    
+
     console_handler.setFormatter(console_formatter)
     console_handler.addFilter(ContextFilter())
     root_logger.addHandler(console_handler)
@@ -201,30 +197,28 @@ def setup_logging():
     # 2. 文件处理器
     try:
         log_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # 生成带时间戳的文件名：backend_log_YYYY-MM-DD_HH-MM-SS.log
         from datetime import datetime
+
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         log_file = log_dir / f"backend_log_{timestamp}.log"
 
         # 使用 FileHandler 记录本次运行的日志
-        file_handler = logging.FileHandler(
-            filename=log_file,
-            encoding="utf-8"
-        )
+        file_handler = logging.FileHandler(filename=log_file, encoding="utf-8")
         file_handler.setLevel(level)
-        
+
         if use_json:
             file_formatter = JSONFormatter()
         else:
             file_formatter = logging.Formatter(
                 "%(asctime)s - %(levelname)s - [%(name)s] - %(message)s"
             )
-            
+
         file_handler.setFormatter(file_formatter)
         file_handler.addFilter(ContextFilter())
         root_logger.addHandler(file_handler)
-        
+
     except Exception as e:
         print(f"Failed to setup file logging: {e}")
 
@@ -232,7 +226,7 @@ def setup_logging():
     logging.getLogger("openai").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
-    
+
     logging.info("Logging system initialized")
 
 

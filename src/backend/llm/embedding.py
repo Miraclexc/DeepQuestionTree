@@ -2,11 +2,21 @@
 嵌入向量管理模块
 支持本地模型和 API 两种模式
 """
-import numpy as np
+
+from __future__ import annotations
+
 from typing import List, Optional
 
+import numpy as np
+
 from ..config_loader import get_settings
+from ..utils.logger import get_logger
 from .client_interface import BaseLLMClient
+from .hash_embedding import DEFAULT_EMBEDDING_DIMENSION, build_hash_embedding
+
+SentenceTransformer = None
+
+logger = get_logger(__name__)
 
 
 class EmbeddingManager:
@@ -15,6 +25,9 @@ class EmbeddingManager:
     _instance = None
     _model = None
     _client = None
+    _prefer_client = False
+    _using_hash_fallback = False
+    _fallback_warning_emitted = False
 
     def __new__(cls):
         """单例模式"""
@@ -25,31 +38,37 @@ class EmbeddingManager:
     def __init__(self):
         """初始化嵌入管理器"""
         self.settings = get_settings()
-        self._initialize()
-
-    def _initialize(self) -> None:
-        """初始化本地模型或客户端"""
-        if self.settings.embedding.use_local:
-            self._initialize_local_model()
-        else:
-            # API 模式需要外部传入 LLM 客户端
-            pass
 
     def _initialize_local_model(self) -> None:
         """初始化本地 sentence-transformers 模型"""
+        if self._model is not None or self._using_hash_fallback:
+            return
+
         try:
-            from sentence_transformers import SentenceTransformer
-            self._model = SentenceTransformer(self.settings.embedding.model_path)
+            sentence_transformer_cls = self._get_sentence_transformer_cls()
+            kwargs = {}
+            if self.settings.embedding.local_files_only:
+                kwargs["local_files_only"] = True
+
+            self._model = sentence_transformer_cls(
+                self.settings.embedding.model_path,
+                **kwargs,
+            )
             print(f"已加载本地嵌入模型: {self.settings.embedding.model_path}")
         except ImportError:
+            if self.settings.embedding.fallback_mode == "hash":
+                self._enable_hash_fallback("sentence-transformers 不可用")
+                return
             raise ImportError(
-                "使用本地嵌入模型需要安装 sentence-transformers: "
-                "pip install sentence-transformers"
+                "使用本地嵌入模型需要安装 sentence-transformers: " "uv sync"
             )
         except Exception as e:
+            if self.settings.embedding.fallback_mode == "hash":
+                self._enable_hash_fallback(str(e))
+                return
             raise Exception(f"加载本地嵌入模型失败: {e}")
 
-    def set_client(self, client: BaseLLMClient) -> None:
+    def set_client(self, client: BaseLLMClient, prefer_client: bool = False) -> None:
         """
         设置用于 API 模式的 LLM 客户端
 
@@ -57,6 +76,19 @@ class EmbeddingManager:
             client: LLM 客户端实例
         """
         self._client = client
+        self._prefer_client = prefer_client
+
+    def refresh_settings(self) -> None:
+        """刷新配置缓存。"""
+        self.settings = get_settings()
+        self._using_hash_fallback = False
+        self._fallback_warning_emitted = False
+
+    def _should_use_local(self) -> bool:
+        return self.settings.embedding.use_local and not self._prefer_client
+
+    def _should_use_hash_fallback(self) -> bool:
+        return self._using_hash_fallback
 
     async def get_embedding(self, text: str) -> List[float]:
         """
@@ -77,16 +109,18 @@ class EmbeddingManager:
         if len(text) > 8000:  # 避免文本过长
             text = text[:8000] + "..."
 
-        if self.settings.embedding.use_local and self._model:
-            # 使用本地模型
-            return self._model.encode(text).tolist()
-        elif self._client:
+        if self._should_use_local():
+            self._initialize_local_model()
+            if self._should_use_hash_fallback():
+                return build_hash_embedding(text)
+            if self._model:
+                return self._model.encode(text).tolist()
+
+        if self._client:
             # 使用 API
             return await self._client.get_embedding(text)
-        else:
-            raise Exception(
-                "没有可用的嵌入模型。请检查配置或设置 LLM 客户端。"
-            )
+
+        raise Exception("没有可用的嵌入模型。请检查配置或设置 LLM 客户端。")
 
     async def get_embeddings_batch(self, texts: List[str]) -> List[List[float]]:
         """
@@ -101,19 +135,23 @@ class EmbeddingManager:
         if not texts:
             return []
 
-        if self.settings.embedding.use_local and self._model:
-            # 本地模型支持批量处理
-            embeddings = self._model.encode(texts)
-            return [emb.tolist() for emb in embeddings]
-        else:
-            # API 模式需要逐个调用
-            embeddings = []
-            for text in texts:
-                emb = await self.get_embedding(text)
-                embeddings.append(emb)
-            return embeddings
+        if self._should_use_local():
+            self._initialize_local_model()
+            if self._should_use_hash_fallback():
+                return [build_hash_embedding(text.strip()) for text in texts]
+            if self._model:
+                encoded_embeddings = self._model.encode(texts)
+                return [emb.tolist() for emb in encoded_embeddings]
 
-    def cosine_similarity(self, embedding1: List[float], embedding2: List[float]) -> float:
+        embeddings: list[list[float]] = []
+        for text in texts:
+            emb = await self.get_embedding(text)
+            embeddings.append(emb)
+        return embeddings
+
+    def cosine_similarity(
+        self, embedding1: List[float], embedding2: List[float]
+    ) -> float:
         """
         计算两个嵌入向量的余弦相似度
 
@@ -136,14 +174,11 @@ class EmbeddingManager:
         if norm1 == 0 or norm2 == 0:
             return 0.0
 
-        return dot_product / (norm1 * norm2)
+        return float(dot_product / (norm1 * norm2))
 
     async def find_most_similar(
-        self,
-        query: str,
-        candidates: List[str],
-        top_k: int = 1
-    ) -> List[tuple]:
+        self, query: str, candidates: List[str], top_k: int = 1
+    ) -> List[tuple[int, float, str]]:
         """
         在候选文本中找到与查询最相似的文本
 
@@ -165,7 +200,7 @@ class EmbeddingManager:
         candidate_embs = await self.get_embeddings_batch(candidates)
 
         # 计算相似度
-        similarities = []
+        similarities: list[tuple[int, float, str]] = []
         for i, cand_emb in enumerate(candidate_embs):
             sim = self.cosine_similarity(query_emb, cand_emb)
             similarities.append((i, sim, candidates[i]))
@@ -177,10 +212,7 @@ class EmbeddingManager:
         return similarities[:top_k]
 
     async def check_duplicate(
-        self,
-        text: str,
-        existing_texts: List[str],
-        threshold: Optional[float] = None
+        self, text: str, existing_texts: List[str], threshold: Optional[float] = None
     ) -> bool:
         """
         检查文本是否与已有文本重复
@@ -217,10 +249,30 @@ class EmbeddingManager:
             int: 向量维度
         """
         if self._model:
-            return self._model.get_sentence_embedding_dimension()
+            dimension = self._model.get_sentence_embedding_dimension()
+            return (
+                int(dimension) if dimension is not None else DEFAULT_EMBEDDING_DIMENSION
+            )
         else:
-            # API 模式的常见维度
-            return 768  # OpenAI 的 text-embedding-ada-002 维度
+            return DEFAULT_EMBEDDING_DIMENSION
+
+    def _enable_hash_fallback(self, reason: str) -> None:
+        self._model = None
+        self._using_hash_fallback = True
+        if not self._fallback_warning_emitted:
+            logger.warning(
+                "本地嵌入模型不可用，已降级为离线 hash embedding。reason=%s",
+                reason,
+            )
+            self._fallback_warning_emitted = True
+
+    def _get_sentence_transformer_cls(self):
+        global SentenceTransformer
+        if SentenceTransformer is None:
+            from sentence_transformers import SentenceTransformer as imported_cls
+
+            SentenceTransformer = imported_cls
+        return SentenceTransformer
 
 
 # 全局实例

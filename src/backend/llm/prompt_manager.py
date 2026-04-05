@@ -2,14 +2,12 @@
 Prompt 管理模块
 负责加载、缓存和渲染 Prompt 模板
 """
-import os
+
 from pathlib import Path
 from typing import Any, Dict
 
-from jinja2 import Template, TemplateError
+from jinja2 import Environment, Template, TemplateError, meta
 from yaml import safe_load
-
-from ..config_loader import get_settings
 
 
 class PromptManager:
@@ -24,7 +22,6 @@ class PromptManager:
         """
         self.prompt_file = Path(prompt_file)
         self.prompts: Dict[str, str] = {}
-        self.settings = get_settings()
 
         # 加载所有 Prompt
         self._load_prompts()
@@ -37,7 +34,7 @@ class PromptManager:
             raise FileNotFoundError(f"Prompt 文件不存在: {self.prompt_file}")
 
         try:
-            with open(self.prompt_file, 'r', encoding='utf-8') as f:
+            with open(self.prompt_file, "r", encoding="utf-8") as f:
                 self.prompts = safe_load(f) or {}
         except Exception as e:
             raise ValueError(f"加载 Prompt 文件失败: {e}") from e
@@ -101,7 +98,7 @@ class PromptManager:
         """
         return self.prompts.copy()
 
-    def validate_prompt(self, prompt_key: str, required_vars: list) -> bool:
+    def validate_prompt(self, prompt_key: str, required_vars: list[str]) -> bool:
         """
         验证 Prompt 是否包含所需的变量
 
@@ -116,11 +113,11 @@ class PromptManager:
             return False
 
         template_str = self.prompts[prompt_key]
-        template = Template(template_str)
-        environment = template.environment
+        environment = Environment()
+        parsed_template = environment.parse(template_str)
 
-        # 检查未定义的变量
-        undefined_vars = set(template.parse().find_undeclared_variables(environment))
+        # 检查模板中声明的变量
+        undefined_vars = meta.find_undeclared_variables(parsed_template)
         required_set = set(required_vars)
 
         # 检查是否所有必需变量都存在
@@ -128,7 +125,7 @@ class PromptManager:
 
 
 # 全局 Prompt 管理器实例
-_prompt_manager: PromptManager = None
+_prompt_manager: PromptManager | None = None
 
 
 def get_prompt_manager() -> PromptManager:

@@ -24,6 +24,8 @@ embedding:
   model_path: "DMetaSoul/sbert-chinese-general-v2-distill"
   api_model: "text-embedding-ada-002"  # API 模式下使用的模型
   similarity_threshold: 0.95  # 重复问题判定的相似度阈值
+  local_files_only: true  # 仅从本地缓存加载，不触发远程下载
+  fallback_mode: "hash"  # 本地模型不可用时降级为离线 hash embedding
 
 storage:
   data_dir: "data"
@@ -35,3 +37,6 @@ logging:
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
   file_rotation: "daily"
   json_format: false # 是否使用 JSON 格式输出日志（便于机器解析）
+
+security:
+  api_token: "dev-token"  # 开发态静态 Bearer Token，生产环境请改为环境变量覆盖

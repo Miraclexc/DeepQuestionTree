@@ -2,16 +2,21 @@
 LLM 客户端抽象基类
 定义所有 LLM 客户端必须实现的接口
 """
+
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel
+
 
 class CompletionResponse(BaseModel):
     """LLM 响应数据封装"""
+
     content: str
     model: str
     tokens: int = 0
     cost: float = 0.0
+
 
 class BaseLLMClient(ABC):
     """LLM 客户端抽象基类"""
@@ -22,7 +27,7 @@ class BaseLLMClient(ABC):
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
-        json_mode: bool = False
+        json_mode: bool = False,
     ) -> CompletionResponse:
         """
         发送对话请求并获取回复

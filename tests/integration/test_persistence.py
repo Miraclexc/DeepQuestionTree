@@ -2,16 +2,17 @@
 集成测试 - 持久化模块
 测试会话的保存、加载、恢复功能
 """
-import pytest
+
 import json
 from pathlib import Path
 
+import pytest
+
+from src.backend.core.schema import Fact, Node, QAInteraction, SessionData
 from src.backend.modules.persistence import SessionManager
-from src.backend.core.schema import SessionData, Node, QAInteraction, Fact
 
 
 @pytest.mark.integration
-@pytest.mark.asyncio
 class TestPersistence:
     """测试持久化功能"""
 
@@ -33,10 +34,8 @@ class TestPersistence:
             id=session.root_node_id,
             depth=0,
             interaction=QAInteraction(
-                question="测试持久化功能",
-                answer="这是一个测试会话",
-                summary="测试会话"
-            )
+                question="测试持久化功能", answer="这是一个测试会话", summary="测试会话"
+            ),
         )
         session.add_node(root)
 
@@ -45,10 +44,8 @@ class TestPersistence:
             parent_id=root.id,
             depth=1,
             interaction=QAInteraction(
-                question="子节点问题",
-                answer="子节点回答",
-                tokens_used=150
-            )
+                question="子节点问题", answer="子节点回答", tokens_used=150
+            ),
         )
         child.state.visit_count = 5
         child.state.value_sum = 35.0
@@ -79,7 +76,9 @@ class TestPersistence:
         file_path = session_manager.sessions_dir / f"{session.session_id}.json"
         assert file_path.exists()
 
-    async def test_save_and_load_session(self, session_manager, sample_session_with_data):
+    async def test_save_and_load_session(
+        self, session_manager, sample_session_with_data
+    ):
         """测试保存后加载会话"""
         original_session = sample_session_with_data
 
@@ -141,7 +140,9 @@ class TestPersistence:
         assert session1.session_id in session_ids
         assert session2.session_id in session_ids
 
-    async def test_backup_session(self, session_manager, sample_session_with_data, tmp_path):
+    async def test_backup_session(
+        self, session_manager, sample_session_with_data, tmp_path
+    ):
         """测试会话备份"""
         session = sample_session_with_data
 
@@ -150,7 +151,9 @@ class TestPersistence:
 
         # 备份
         backup_dir = tmp_path / "backup"
-        result = await session_manager.backup_session(session.session_id, str(backup_dir))
+        result = await session_manager.backup_session(
+            session.session_id, str(backup_dir)
+        )
 
         assert result is True
 
@@ -164,7 +167,9 @@ class TestPersistence:
         assert isinstance(count, int)
         assert count >= 0
 
-    async def test_session_json_structure(self, session_manager, sample_session_with_data):
+    async def test_session_json_structure(
+        self, session_manager, sample_session_with_data
+    ):
         """测试保存的 JSON 结构"""
         session = sample_session_with_data
 
@@ -173,7 +178,7 @@ class TestPersistence:
 
         # 读取 JSON 文件
         file_path = session_manager.sessions_dir / f"{session.session_id}.json"
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             json_data = json.load(f)
 
         # 检查 JSON 结构
@@ -228,7 +233,7 @@ class TestPersistenceEdgeCases:
         session_id = "corrupted_session"
         file_path = temp_session_dir / f"{session_id}.json"
 
-        with open(file_path, 'w') as f:
+        with open(file_path, "w") as f:
             f.write("{ invalid json content")
 
         # 尝试加载

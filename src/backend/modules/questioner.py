@@ -2,13 +2,14 @@
 提问模块
 负责生成候选问题、评估问题价值、检测重复问题
 """
+
 import json
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 from ..core.schema import Fact, SessionData
 from ..llm.client_interface import BaseLLMClient
-from ..llm.prompt_manager import get_prompt_manager
 from ..llm.embedding import get_embedding_manager
+from ..llm.prompt_manager import get_prompt_manager
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -21,10 +22,7 @@ class Questioner:
     """
 
     def __init__(
-        self,
-        llm_client: BaseLLMClient,
-        embedding_manager=None,
-        prompt_manager=None
+        self, llm_client: BaseLLMClient, embedding_manager=None, prompt_manager=None
     ):
         """
         初始化提问者
@@ -37,7 +35,6 @@ class Questioner:
         self.llm = llm_client
         self.embedding = embedding_manager or get_embedding_manager()
         self.prompts = prompt_manager or get_prompt_manager()
-        self.settings = None
 
         # 维护历史问题库（用于去重）
         self.history_questions: List[str] = []
@@ -49,7 +46,7 @@ class Questioner:
         current_answer: str,
         goal: str,
         parent_question: str = "初始问题",
-        k: int = 3
+        k: int = 3,
     ) -> List[str]:
         """
         生成候选问题列表
@@ -67,7 +64,9 @@ class Questioner:
         try:
             # 准备上下文文本
             if context_facts:
-                facts_text = "\n".join([f"- {f.content}" for f in context_facts[-10:]])  # 限制事实数量
+                facts_text = "\n".join(
+                    [f"- {f.content}" for f in context_facts[-10:]]
+                )  # 限制事实数量
             else:
                 facts_text = "暂无已知事实"
 
@@ -78,15 +77,13 @@ class Questioner:
                 current_answer=current_answer,
                 goal=goal,
                 parent_question=parent_question,
-                k=k
+                k=k,
             )
 
             # 调用 LLM 生成问题
             messages = [{"role": "user", "content": prompt}]
             response = await self.llm.chat_completion(
-                messages=messages,
-                temperature=0.8,  # 较高的创造性
-                json_mode=True
+                messages=messages, temperature=0.8, json_mode=True  # 较高的创造性
             )
 
             # 解析响应 (使用 response.content)
@@ -115,7 +112,7 @@ class Questioner:
         question: str,
         known_facts: List[Fact],
         goal: str,
-        parent_question: str = "初始问题"
+        parent_question: str = "初始问题",
     ) -> float:
         """
         评估问题的信息增益价值
@@ -132,7 +129,9 @@ class Questioner:
         try:
             # 准备已知事实文本
             if known_facts:
-                facts_text = "\n".join([f"- {f.content}" for f in known_facts[-20:]])  # 限制数量
+                facts_text = "\n".join(
+                    [f"- {f.content}" for f in known_facts[-20:]]
+                )  # 限制数量
             else:
                 facts_text = "暂无已知事实"
 
@@ -142,15 +141,13 @@ class Questioner:
                 question=question,
                 known_facts=facts_text,
                 goal=goal,
-                parent_question=parent_question
+                parent_question=parent_question,
             )
 
             # 调用 LLM 评估
             messages = [{"role": "user", "content": prompt}]
             response = await self.llm.chat_completion(
-                messages=messages,
-                temperature=0.3,  # 较低的随机性
-                json_mode=True
+                messages=messages, temperature=0.3, json_mode=True  # 较低的随机性
             )
 
             # 解析分数 (使用 response.content)
@@ -163,10 +160,7 @@ class Questioner:
             return 5.0
 
     async def answer_question(
-        self,
-        question: str,
-        context_facts: List[Fact],
-        goal: str
+        self, question: str, context_facts: List[Fact], goal: str
     ) -> tuple[str, int, str]:
         """
         回答问题
@@ -180,26 +174,24 @@ class Questioner:
             tuple[str, int, str]: (回答内容, 消耗token数, 使用的模型)
         """
         try:
-             # Context from global facts (take last 10)
+            # Context from global facts (take last 10)
             facts_text = "\n".join([f"- {f.content}" for f in context_facts[-10:]])
-            
+
             # 使用 Prompt Manager 渲染
             prompt = self.prompts.render(
                 "process_node_answer",
                 goal=goal,
                 facts_text=facts_text,
-                question=question
+                question=question,
             )
-            
+
             messages = [{"role": "user", "content": prompt}]
-            
+
             # 使用 LLM 客户端
             response = await self.llm.chat_completion(
-                messages=messages,
-                temperature=0.7,
-                json_mode=False
+                messages=messages, temperature=0.7, json_mode=False
             )
-            
+
             return response.content, response.tokens, response.model
 
         except Exception as e:
@@ -209,7 +201,7 @@ class Questioner:
     async def check_duplicate(
         self,
         question: str,
-        threshold: float = None
+        threshold: float | None = None,
     ) -> bool:
         """
         检查问题是否重复
@@ -223,8 +215,9 @@ class Questioner:
         """
         if threshold is None:
             from ..config_loader import get_settings
-            self.settings = get_settings()
-            threshold = self.settings.embedding.similarity_threshold
+
+            settings = get_settings()
+            threshold = settings.embedding.similarity_threshold
 
         if not self.history_questions:
             # 第一个问题，记录并返回不重复
@@ -233,9 +226,7 @@ class Questioner:
 
         # 检查与历史问题的相似度
         is_duplicate = await self.embedding.check_duplicate(
-            question,
-            self.history_questions,
-            threshold
+            question, self.history_questions, threshold
         )
 
         if not is_duplicate:
@@ -268,11 +259,11 @@ class Questioner:
         questions.extend(quoted)
 
         # 匹配编号列表
-        numbered = re.findall(r'^\d+\.\s*(.+)$', text, re.MULTILINE)
+        numbered = re.findall(r"^\d+\.\s*(.+)$", text, re.MULTILINE)
         questions.extend([q.strip() for q in numbered if len(q.strip()) > 10])
 
         # 匹配问号结尾的句子（改进版，支持中文和英文问号）
-        sentences = re.findall(r'([^\n.!。！]*[?？]+)', text)
+        sentences = re.findall(r"([^\n.!。！]*[?？]+)", text)
         questions.extend([s.strip() for s in sentences if len(s.strip()) > 5])
 
         # 去重并返回
@@ -284,15 +275,15 @@ class Questioner:
         import re
 
         # 尝试匹配数字
-        numbers = re.findall(r'\d+(?:\.\d+)?', response)
+        numbers = re.findall(r"\d+(?:\.\d+)?", response)
         if numbers:
             return float(numbers[0])
 
         # 尝试解析 JSON
         try:
             data = json.loads(response)
-            if isinstance(data, dict) and 'score' in data:
-                return float(data['score'])
+            if isinstance(data, dict) and "score" in data:
+                return float(data["score"])
         except:
             pass
 
@@ -306,6 +297,6 @@ class Questioner:
             "它有哪些潜在的应用场景？",
             "实施过程中可能遇到哪些挑战？",
             "与现有方案相比有何优势？",
-            "未来的发展趋势如何？"
+            "未来的发展趋势如何？",
         ]
         return default_questions[:k]

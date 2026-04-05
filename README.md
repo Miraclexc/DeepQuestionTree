@@ -1,85 +1,87 @@
 # DeepQuestionTree
 
-DeepQuestionTree 是一个基于 **MCTS (蒙特卡洛树搜索)** 和 **LLM (大语言模型)** 的深度问题探索系统。它通过“提问-回答-评估-再提问”的递归过程，构建一棵思维树，以深化对复杂问题的认知。
+> Last Updated: 2026-04-05
+>
+> 本页唯一负责：作为项目入口页，提供最短启动路径，并把用户与开发者分流到各自文档。
 
-## 🎯 核心目标
+DeepQuestionTree 是一个基于 MCTS 和 LLM 的深度问题探索工作台。系统会围绕一个全局问题持续生成子问题、回答、事实和剪枝结果，最后输出问题树与总结报告。
 
-深化对问题的认识，通过不断提问的方式尽可能让 AI 分析透彻问题并推演各种可能的情况。
+## Quick Start
 
-## ✨ 核心特性
+### Prerequisites
 
--   **提问树结构**: 动态生成的思维树（Questions & Answers）。
--   **MCTS 驱动**: 使用 UCT 算法平衡“探索”与“利用”，智能选择最有价值的提问路径。
--   **启发式评估**: LLM 扮演“裁判”，并在 Rollout 阶段预估信息增益，而非单纯生成长文。
--   **事实压缩**: 维护“已确认事实”列表，有效管理上下文窗口。
--   **多模式基准**:
-    -   🔬 **科研 Idea 探索**
-    -   📚 **全面主题回答**
-    -   🔍 **根本原因寻找**
+- Python `3.12`
+- Node `20`
+- `uv`
+- `npm`
 
-## 🛠️ 技术栈
+Python 依赖只通过 [`pyproject.toml`](./pyproject.toml) 和 [`uv.lock`](./uv.lock) 管理。请使用 `uv`，不要直接使用 `pip install`。
 
--   **语言**: Python 3.12.11
--   **核心**: MCTS (Custom Implementation)
--   **LLM**: OpenAI API
--   **Embedding**: Sentence-Transformers (`DMetaSoul/sbert-chinese-general-v2-distill`) / API
--   **可视化**: Next.js + React Flow (Frontend)
-
-## 📂 目录结构
-
-```
-DeepQuestionTree/
-├── config/             # 配置文件 (settings, prompts)
-├── src/
-│   ├── backend/
-│   │   ├── core/       # MCTS 引擎, 节点定义
-│   │   ├── modules/    # 提问, 压缩, 剪枝, 持久化
-│   │   ├── llm/        # LLM Client, Embedding
-│   │   └── main.py     # 入口
-│   └── frontend/       # Next.js 项目
-└── requirements.txt    # Python 依赖
-```
-
-## 🚀 快速开始
-
-### 1. 环境准备
-
-确保安装 Python 3.12.11。
+### Install Dependencies
 
 ```bash
-pip install -r requirements.txt
+uv sync --group dev
+cd src/frontend
+npm ci
 ```
 
-### 2. 配置
+### Configure Local Environment
 
-复制 `.env.example` (如有) 或直接修改 `config/settings.yaml` 配置你的 API Key。
+从 [`.env.example`](./.env.example) 生成根目录 `.env`：
 
-### 3. 运行
-
-#### 后端 (Backend)
-
-**直接启动**:
 ```bash
-python src/backend/main.py
+copy .env.example .env
 ```
 
-**其它启动方式**:
+后端配置优先级固定为：
+
+```text
+代码默认值 < config/settings.yaml < 根目录 .env < 进程环境变量
+```
+
+前端公开配置放在 `src/frontend/.env.local`，常用变量如下：
+
+```env
+NEXT_PUBLIC_API_HOST=http://localhost
+NEXT_PUBLIC_API_PORT=8001
+NEXT_PUBLIC_API_TOKEN=dev-token
+```
+
+### Start the App
+
+启动后端：
+
 ```bash
-uvicorn src.backend.main:app --reload --host 0.0.0.0 --port 8001
+uv run python -m src.backend.main
 ```
 
-#### 前端 (Frontend)
+启动前端：
 
 ```bash
 cd src/frontend
 npm run dev
 ```
 
+默认访问地址：
 
-### 4. 默认端口说明
+- 前端：`http://localhost:3000`
+- 后端：`http://localhost:8001`
 
-- **3000**: 前端网页 (Web UI) - 默认对本地开放 (http://localhost:3000)
+如果浏览器请求返回 `401` 或 `403`，请先设置 Bearer Token：
 
-- **8001**: 后端 API (Backend) - 默认对本地开放 (http://localhost:8001)
+```js
+localStorage.setItem("dqt.apiToken", "dev-token");
+```
 
-若希望自定义端口，则修改frontend/.env.local文件
+## Documentation
+
+- 用户操作与常见问题：[`doc/user-guide.md`](./doc/user-guide.md)
+- 开发环境、目录职责与协作约束：[`doc/developer-guide.md`](./doc/developer-guide.md)
+- 文档总索引：[`doc/README.md`](./doc/README.md)
+
+## Canonical References
+
+- 真实架构与边界：[`doc/project-overview.md`](./doc/project-overview.md)
+- API、鉴权与错误契约：[`doc/application-layer-and-auth.md`](./doc/application-layer-and-auth.md)
+- 项目级测试、CI 与真实 E2E：[`doc/testing-and-e2e.md`](./doc/testing-and-e2e.md)
+- 前端测试细节：[`doc/frontend-testing.md`](./doc/frontend-testing.md)

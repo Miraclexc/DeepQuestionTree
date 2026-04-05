@@ -1,16 +1,48 @@
-﻿# Documentation Index
+# Documentation Index
 
-> Last Updated: 2026-03-08
+> Last Updated: 2026-04-05
+>
+> 本页唯一负责：按受众和职责组织文档入口，不承载实现细节本身。
 
-本目录用于补充根目录 `README.md` 的快速介绍，记录更贴近当前代码实现的详细说明。
+先从根目录 [`README.md`](../README.md) 获取最短启动路径，再按下面的受众选择文档。
 
-## Documents
+## 用户使用
 
-| Document | Purpose |
+| Document | 唯一职责 |
 |---|---|
-| [project-overview.md](./project-overview.md) | 说明项目当前的整体架构、核心工作流程、已支持功能、主要 API、测试覆盖与当前边界。 |
+| [user-guide.md](./user-guide.md) | 面向本地使用者的完整操作手册：启动、Token 设置、创建探索、查看节点、生成报告、导出、清理数据与常见问题。 |
 
-## Reading Order
+## 开发维护
 
-1. 先阅读根目录 `README.md` 了解项目目标与快速启动方式。
-2. 再阅读 [project-overview.md](./project-overview.md) 了解当前代码真实实现的工作流程和能力边界。
+| Document | 唯一职责 |
+|---|---|
+| [developer-guide.md](./developer-guide.md) | 面向开发者的环境基线、目录职责、前后端调试方式、变更同步点和文档维护规则。 |
+
+## 测试与验收
+
+| Document | 唯一职责 |
+|---|---|
+| [testing-and-e2e.md](./testing-and-e2e.md) | 项目级测试总览：`run_tests.py` 语义、质量门禁、CI 约束、真实 provider E2E 与手动验收主流程。 |
+| [frontend-testing.md](./frontend-testing.md) | 前端专属测试细节：Vitest、MSW、Playwright、stub、浏览器 smoke 和前端命令。 |
+
+## 架构与接口
+
+| Document | 唯一职责 |
+|---|---|
+| [project-overview.md](./project-overview.md) | 当前真实架构、运行时约束、配置边界、数据流和已知原型边界。 |
+| [application-layer-and-auth.md](./application-layer-and-auth.md) | 统一 API 路由、鉴权规则、错误响应与 read-model 契约。 |
+
+## Recommended Reading Paths
+
+### 如果你是使用者
+
+1. [`README.md`](../README.md)
+2. [`user-guide.md`](./user-guide.md)
+
+### 如果你是开发者
+
+1. [`README.md`](../README.md)
+2. [`developer-guide.md`](./developer-guide.md)
+3. [`project-overview.md`](./project-overview.md)
+4. [`application-layer-and-auth.md`](./application-layer-and-auth.md)
+5. [`testing-and-e2e.md`](./testing-and-e2e.md)

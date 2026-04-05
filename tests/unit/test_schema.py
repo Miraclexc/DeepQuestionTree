@@ -2,13 +2,20 @@
 单元测试 - 数据模型和 Schema
 测试 Pydantic 模型的验证、序列化和核心方法
 """
-import pytest
-import math
+
 import json
+import math
 from datetime import datetime
 
+import pytest
+
 from src.backend.core.schema import (
-    Fact, QAInteraction, NodeState, Node, SessionData, SessionStatus
+    Fact,
+    Node,
+    NodeState,
+    QAInteraction,
+    SessionData,
+    SessionStatus,
 )
 
 
@@ -18,11 +25,7 @@ class TestFact:
 
     def test_fact_creation(self):
         """测试事实创建"""
-        fact = Fact(
-            content="测试事实内容",
-            source_node_id="node_123",
-            confidence=0.95
-        )
+        fact = Fact(content="测试事实内容", source_node_id="node_123", confidence=0.95)
 
         assert fact.content == "测试事实内容"
         assert fact.source_node_id == "node_123"
@@ -45,11 +48,7 @@ class TestFact:
 
     def test_fact_serialization(self):
         """测试事实序列化"""
-        fact = Fact(
-            content="测试事实",
-            source_node_id="node_1",
-            confidence=0.9
-        )
+        fact = Fact(content="测试事实", source_node_id="node_1", confidence=0.9)
 
         # 序列化为字典
         fact_dict = fact.model_dump()
@@ -76,7 +75,7 @@ class TestQAInteraction:
             question="什么是AI？",
             answer="人工智能（AI）是...",
             summary="AI 定义",
-            tokens_used=150
+            tokens_used=150,
         )
 
         assert qa.question == "什么是AI？"
@@ -86,10 +85,7 @@ class TestQAInteraction:
 
     def test_qa_default_values(self):
         """测试默认值"""
-        qa = QAInteraction(
-            question="测试问题",
-            answer="测试回答"
-        )
+        qa = QAInteraction(question="测试问题", answer="测试回答")
 
         assert qa.summary is None
         assert qa.tokens_used == 0
@@ -138,7 +134,7 @@ class TestNode:
         uct = node.uct_value(parent_visit_count=10, c_param=1.414)
 
         # 未访问节点应返回无穷大
-        assert uct == float('inf')
+        assert uct == float("inf")
 
     def test_uct_value_calculation(self):
         """测试 UCT 值计算"""
@@ -300,7 +296,7 @@ class TestSessionData:
 
         # 路径应该是连续的（每个节点的父节点是前一个节点）
         for i in range(1, len(path)):
-            assert path[i].parent_id == path[i-1].id
+            assert path[i].parent_id == path[i - 1].id
 
     def test_session_serialization(self, sample_session):
         """测试会话序列化"""

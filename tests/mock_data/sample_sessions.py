@@ -2,8 +2,13 @@
 Mock 数据 - 示例会话
 提供预设的测试会话数据
 """
+
 from src.backend.core.schema import (
-    SessionData, Node, QAInteraction, Fact, SessionStatus
+    Fact,
+    Node,
+    QAInteraction,
+    SessionData,
+    SessionStatus,
 )
 
 
@@ -18,8 +23,8 @@ def create_simple_session():
         interaction=QAInteraction(
             question="探索机器学习基础",
             answer="机器学习是人工智能的一个分支...",
-            summary="机器学习简介"
-        )
+            summary="机器学习简介",
+        ),
     )
     session.add_node(root)
 
@@ -37,8 +42,8 @@ def create_complex_session():
         interaction=QAInteraction(
             question="深入理解深度学习",
             answer="深度学习是机器学习的一个子领域...",
-            summary="深度学习概述"
-        )
+            summary="深度学习概述",
+        ),
     )
     root.state.visit_count = 10
     root.state.value_sum = 75.0
@@ -52,8 +57,8 @@ def create_complex_session():
             question="神经网络的基本原理是什么？",
             answer="神经网络模拟人脑神经元的工作方式...",
             summary="神经网络原理",
-            tokens_used=200
-        )
+            tokens_used=200,
+        ),
     )
     child1.state.visit_count = 5
     child1.state.value_sum = 40.0
@@ -61,13 +66,13 @@ def create_complex_session():
         Fact(
             content="神经网络由输入层、隐藏层和输出层组成",
             source_node_id=child1.id,
-            confidence=0.95
+            confidence=0.95,
         ),
         Fact(
             content="反向传播是训练神经网络的主要算法",
             source_node_id=child1.id,
-            confidence=0.92
-        )
+            confidence=0.92,
+        ),
     ]
     session.add_node(child1)
     root.children_ids.append(child1.id)
@@ -79,8 +84,8 @@ def create_complex_session():
             question="深度学习有哪些常见应用？",
             answer="深度学习广泛应用于图像识别、语音识别等领域...",
             summary="深度学习应用",
-            tokens_used=180
-        )
+            tokens_used=180,
+        ),
     )
     child2.state.visit_count = 4
     child2.state.value_sum = 28.0
@@ -88,7 +93,7 @@ def create_complex_session():
         Fact(
             content="深度学习在计算机视觉领域取得重大突破",
             source_node_id=child2.id,
-            confidence=0.90
+            confidence=0.90,
         )
     ]
     session.add_node(child2)
@@ -102,8 +107,8 @@ def create_complex_session():
             question="什么是激活函数？",
             answer="激活函数引入非线性，使神经网络能够学习复杂模式...",
             summary="激活函数",
-            tokens_used=150
-        )
+            tokens_used=150,
+        ),
     )
     grandchild.state.visit_count = 3
     grandchild.state.value_sum = 21.0
@@ -111,7 +116,7 @@ def create_complex_session():
         Fact(
             content="常见的激活函数包括 ReLU、Sigmoid 和 Tanh",
             source_node_id=grandchild.id,
-            confidence=0.98
+            confidence=0.98,
         )
     ]
     session.add_node(grandchild)
@@ -159,51 +164,21 @@ SAMPLE_QUESTIONS = [
     "批量归一化的作用是什么？",
     "迁移学习有哪些应用？",
     "生成对抗网络的原理是什么？",
-    "强化学习与监督学习有何不同？"
+    "强化学习与监督学习有何不同？",
 ]
 
 # 预定义的事实列表
 SAMPLE_FACTS = [
-    {
-        "content": "深度学习是机器学习的一个子领域",
-        "confidence": 0.98
-    },
-    {
-        "content": "Transformer 架构于 2017 年由 Google 提出",
-        "confidence": 0.99
-    },
-    {
-        "content": "注意力机制允许模型关注输入的不同部分",
-        "confidence": 0.95
-    },
-    {
-        "content": "卷积神经网络特别适合处理图像数据",
-        "confidence": 0.96
-    },
-    {
-        "content": "LSTM 网络可以缓解循环神经网络的梯度消失问题",
-        "confidence": 0.94
-    },
-    {
-        "content": "Dropout 是一种常用的正则化技术",
-        "confidence": 0.93
-    },
-    {
-        "content": "Adam 优化器结合了动量和自适应学习率",
-        "confidence": 0.92
-    },
-    {
-        "content": "预训练模型可以大大减少训练时间",
-        "confidence": 0.90
-    },
-    {
-        "content": "GAN 由生成器和判别器组成",
-        "confidence": 0.97
-    },
-    {
-        "content": "强化学习通过奖励信号进行学习",
-        "confidence": 0.91
-    }
+    {"content": "深度学习是机器学习的一个子领域", "confidence": 0.98},
+    {"content": "Transformer 架构于 2017 年由 Google 提出", "confidence": 0.99},
+    {"content": "注意力机制允许模型关注输入的不同部分", "confidence": 0.95},
+    {"content": "卷积神经网络特别适合处理图像数据", "confidence": 0.96},
+    {"content": "LSTM 网络可以缓解循环神经网络的梯度消失问题", "confidence": 0.94},
+    {"content": "Dropout 是一种常用的正则化技术", "confidence": 0.93},
+    {"content": "Adam 优化器结合了动量和自适应学习率", "confidence": 0.92},
+    {"content": "预训练模型可以大大减少训练时间", "confidence": 0.90},
+    {"content": "GAN 由生成器和判别器组成", "confidence": 0.97},
+    {"content": "强化学习通过奖励信号进行学习", "confidence": 0.91},
 ]
 
 # 预定义的回答模板
@@ -211,16 +186,16 @@ SAMPLE_ANSWERS = {
     "原理类": [
         "该技术的核心原理是通过{method}来实现{goal}。",
         "从技术角度来看，{concept}主要依赖于{foundation}。",
-        "这个机制的工作方式可以概括为：首先{step1}，然后{step2}，最后{step3}。"
+        "这个机制的工作方式可以概括为：首先{step1}，然后{step2}，最后{step3}。",
     ],
     "应用类": [
         "该技术在{domain}领域有广泛应用，特别是在{scenario}方面。",
         "实际应用案例包括{case1}、{case2}和{case3}。",
-        "业界普遍使用该技术来解决{problem}。"
+        "业界普遍使用该技术来解决{problem}。",
     ],
     "对比类": [
         "与{alternative}相比，该方法的优势在于{advantage}。",
         "两种技术的主要区别在于：{difference}。",
-        "在{aspect}方面，{method1}优于{method2}。"
-    ]
+        "在{aspect}方面，{method1}优于{method2}。",
+    ],
 }

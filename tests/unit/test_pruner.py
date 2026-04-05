@@ -2,14 +2,14 @@
 单元测试 - Pruner 模块
 测试剪枝判断、路径摘要、子树剪枝功能
 """
+
 import pytest
 
+from src.backend.core.schema import Fact, Node, QAInteraction, SessionData
 from src.backend.modules.pruner import Pruner
-from src.backend.core.schema import Node, SessionData, QAInteraction, Fact
 
 
 @pytest.mark.unit
-@pytest.mark.asyncio
 class TestPruner:
     """测试剪枝器模块"""
 
@@ -27,7 +27,7 @@ class TestPruner:
         root = Node(
             id=session.root_node_id,
             depth=0,
-            interaction=QAInteraction(question="测试AI技术", answer="AI是...")
+            interaction=QAInteraction(question="测试AI技术", answer="AI是..."),
         )
         session.add_node(root)
 
@@ -38,7 +38,7 @@ class TestPruner:
         # 创建一个达到最大深度的节点
         deep_node = Node(
             depth=10,  # 超过默认最大深度 5
-            interaction=QAInteraction(question="深层问题", answer="深层回答")
+            interaction=QAInteraction(question="深层问题", answer="深层回答"),
         )
         test_session.add_node(deep_node)
 
@@ -54,9 +54,8 @@ class TestPruner:
         node1 = Node(
             depth=1,
             interaction=QAInteraction(
-                question="什么是深度学习？",
-                answer="深度学习是..."
-            )
+                question="什么是深度学习？", answer="深度学习是..."
+            ),
         )
         test_session.add_node(node1)
 
@@ -64,9 +63,8 @@ class TestPruner:
         node2 = Node(
             depth=1,
             interaction=QAInteraction(
-                question="什么是深度学习？",  # 完全相同
-                answer="深度学习..."
-            )
+                question="什么是深度学习？", answer="深度学习..."  # 完全相同
+            ),
         )
         test_session.add_node(node2)
 
@@ -87,10 +85,7 @@ class TestPruner:
             node = Node(
                 parent_id=parent_id,
                 depth=i + 1,
-                interaction=QAInteraction(
-                    question=f"问题{i}",
-                    answer=f"回答{i}"
-                )
+                interaction=QAInteraction(question=f"问题{i}", answer=f"回答{i}"),
             )
             node.state.visit_count = 3
             node.state.value_sum = 3.0  # 平均值 1.0（很低）
@@ -110,15 +105,11 @@ class TestPruner:
         """测试信息饱和剪枝"""
         # 添加大量事实
         for i in range(60):
-            fact = Fact(
-                content=f"事实 {i}",
-                source_node_id="node_1"
-            )
+            fact = Fact(content=f"事实 {i}", source_node_id="node_1")
             test_session.add_global_fact(fact)
 
         node = Node(
-            depth=1,
-            interaction=QAInteraction(question="测试问题ABC", answer="测试")
+            depth=1, interaction=QAInteraction(question="测试问题ABC", answer="测试")
         )
         test_session.add_node(node)
 
@@ -135,8 +126,8 @@ class TestPruner:
             depth=2,  # 正常深度
             interaction=QAInteraction(
                 question="一个非常独特的新问题XYZ123",  # 使用独特的问题避免重复检测
-                answer="一个新回答"
-            )
+                answer="一个新回答",
+            ),
         )
         node.state.visit_count = 5
         node.state.value_sum = 35.0  # 平均值 7.0（良好）
@@ -180,7 +171,7 @@ class TestPruner:
 
         # 路径应该连续
         for i in range(1, len(path)):
-            assert path[i].parent_id == path[i-1].id
+            assert path[i].parent_id == path[i - 1].id
 
     def test_prune_subtree(self, pruner, sample_nodes):
         """测试子树剪枝"""
@@ -193,11 +184,7 @@ class TestPruner:
 
         if parent_node:
             reason = "测试剪枝"
-            pruned_count = pruner.prune_subtree(
-                parent_node.id,
-                reason,
-                sample_nodes
-            )
+            pruned_count = pruner.prune_subtree(parent_node.id, reason, sample_nodes)
 
             # 应该剪枝了至少一个节点
             assert pruned_count >= 1
@@ -246,7 +233,6 @@ class TestPruner:
 
 
 @pytest.mark.unit
-@pytest.mark.asyncio
 class TestPrunerEdgeCases:
     """测试 Pruner 的边界情况"""
 

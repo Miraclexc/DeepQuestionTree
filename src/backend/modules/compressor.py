@@ -2,13 +2,14 @@
 压缩模块
 负责上下文压缩和事实提取
 """
+
 import json
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 from ..core.schema import Fact, QAInteraction, SessionData
 from ..llm.client_interface import BaseLLMClient
-from ..llm.prompt_manager import get_prompt_manager
 from ..llm.embedding import get_embedding_manager
+from ..llm.prompt_manager import get_prompt_manager
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -20,11 +21,7 @@ class Compressor:
     负责从回答中提取事实和压缩上下文
     """
 
-    def __init__(
-        self,
-        llm_client: BaseLLMClient,
-        prompt_manager=None
-    ):
+    def __init__(self, llm_client: BaseLLMClient, prompt_manager=None):
         """
         初始化压缩器
 
@@ -36,7 +33,9 @@ class Compressor:
         self.prompts = prompt_manager or get_prompt_manager()
         self.embedding_manager = get_embedding_manager()
 
-    async def extract_facts(self, text: str, source_node_id: str) -> tuple[List[Fact], int, str]:
+    async def extract_facts(
+        self, text: str, source_node_id: str
+    ) -> tuple[List[Fact], int, str]:
         """
         从文本中提取事实
 
@@ -49,17 +48,12 @@ class Compressor:
         """
         try:
             # 渲染事实提取 Prompt
-            prompt = self.prompts.render(
-                "extract_facts",
-                text=text
-            )
+            prompt = self.prompts.render("extract_facts", text=text)
 
             # 调用 LLM 提取事实
             messages = [{"role": "user", "content": prompt}]
             response = await self.llm.chat_completion(
-                messages=messages,
-                temperature=0.2,  # 低温度保证准确性
-                json_mode=True
+                messages=messages, temperature=0.2, json_mode=True  # 低温度保证准确性
             )
 
             # 解析响应
@@ -68,11 +62,11 @@ class Compressor:
                 facts_data = json.loads(response.content)
                 if isinstance(facts_data, list):
                     for fact_data in facts_data:
-                        if isinstance(fact_data, dict) and 'content' in fact_data:
+                        if isinstance(fact_data, dict) and "content" in fact_data:
                             fact = Fact(
-                                content=fact_data['content'],
+                                content=fact_data["content"],
                                 source_node_id=source_node_id,
-                                confidence=fact_data.get('confidence', 1.0)
+                                confidence=fact_data.get("confidence", 1.0),
                             )
                             facts.append(fact)
             except json.JSONDecodeError:
@@ -81,18 +75,14 @@ class Compressor:
             # 如果 JSON 解析失败或为空，尝试手动提取
             if not facts:
                 facts = self._extract_facts_manually(text, source_node_id)
-            
+
             return facts, response.tokens, response.model
 
         except Exception as e:
             logger.error(f"提取事实失败: {e}")
             return [], 0, "unknown"
 
-    async def compress_context(
-        self,
-        context: str,
-        token_limit: int = 2000
-    ) -> str:
+    async def compress_context(self, context: str, token_limit: int = 2000) -> str:
         """
         压缩上下文，保留最重要的信息
 
@@ -112,16 +102,13 @@ class Compressor:
         try:
             # 渲染压缩 Prompt
             prompt = self.prompts.render(
-                "compress_context",
-                context=context,
-                token_limit=token_limit
+                "compress_context", context=context, token_limit=token_limit
             )
 
             # 调用 LLM 压缩
             messages = [{"role": "user", "content": prompt}]
             compressed_response = await self.llm.chat_completion(
-                messages=messages,
-                temperature=0.3
+                messages=messages, temperature=0.3
             )
 
             return compressed_response.content.strip()
@@ -129,13 +116,13 @@ class Compressor:
         except Exception as e:
             logger.error(f"压缩上下文失败: {e}")
             # 降级处理：简单截断
-            return context[:token_limit * 2] + "..."
+            return context[: token_limit * 2] + "..."
 
     async def merge_facts(
         self,
         existing_facts: List[Fact],
         new_facts: List[Fact],
-        similarity_threshold: float = 0.85
+        similarity_threshold: float = 0.85,
     ) -> List[Fact]:
         """
         合并事实列表，去除重复
@@ -154,22 +141,26 @@ class Compressor:
             # 检查是否与已有事实重复
             is_duplicate = False
             max_similarity = 0.0
-            most_similar_fact = None
+            most_similar_fact: Fact | None = None
 
             # 获取新事实的嵌入向量
             new_fact_emb = await self.embedding_manager.get_embedding(new_fact.content)
 
             # 计算与所有已有事实的相似度
             for existing_fact in merged_facts:
-                existing_fact_emb = await self.embedding_manager.get_embedding(existing_fact.content)
-                similarity = self.embedding_manager.cosine_similarity(new_fact_emb, existing_fact_emb)
+                existing_fact_emb = await self.embedding_manager.get_embedding(
+                    existing_fact.content
+                )
+                similarity = self.embedding_manager.cosine_similarity(
+                    new_fact_emb, existing_fact_emb
+                )
 
                 if similarity > max_similarity:
                     max_similarity = similarity
                     most_similar_fact = existing_fact
 
             # 判断是否重复
-            if max_similarity >= similarity_threshold:
+            if max_similarity >= similarity_threshold and most_similar_fact is not None:
                 is_duplicate = True
                 # 保留置信度更高的
                 if new_fact.confidence > most_similar_fact.confidence:
@@ -177,7 +168,9 @@ class Compressor:
                     merged_facts.append(new_fact)
                     logger.debug(f"替换事实（置信度更高）: {new_fact.content[:50]}...")
                 else:
-                    logger.debug(f"跳过重复事实（相似度: {max_similarity:.2f}）: {new_fact.content[:50]}...")
+                    logger.debug(
+                        f"跳过重复事实（相似度: {max_similarity:.2f}）: {new_fact.content[:50]}..."
+                    )
 
             if not is_duplicate:
                 merged_facts.append(new_fact)
@@ -192,17 +185,17 @@ class Compressor:
         facts = []
 
         # 简单的规则：寻找句号结尾的陈述句
-        sentences = text.split('。')
+        sentences = text.split("。")
         for sentence in sentences:
             sentence = sentence.strip()
-            if len(sentence) > 10 and not sentence.endswith(('？', '！')):
+            if len(sentence) > 10 and not sentence.endswith(("？", "！")):
                 # 过滤掉明显的主观表述
-                subjective_words = ['我认为', '可能', '大概', '也许', '似乎']
+                subjective_words = ["我认为", "可能", "大概", "也许", "似乎"]
                 if not any(word in sentence for word in subjective_words):
                     fact = Fact(
-                        content=sentence + '。',
+                        content=sentence + "。",
                         source_node_id=source_node_id,
-                        confidence=0.6  # 手动提取的置信度较低
+                        confidence=0.6,  # 手动提取的置信度较低
                     )
                     facts.append(fact)
 
@@ -210,9 +203,7 @@ class Compressor:
         return facts[:5]
 
     def summarize_interactions(
-        self,
-        interactions: List[QAInteraction],
-        max_facts: int = 20
+        self, interactions: List[QAInteraction], max_facts: int = 20
     ) -> Dict[str, Any]:
         """
         总结多个交互，提取关键信息
@@ -228,10 +219,7 @@ class Compressor:
         all_facts = []
         for interaction in interactions:
             # 模拟提取事实（实际应该调用 extract_facts）
-            facts = self._extract_facts_manually(
-                interaction.answer,
-                "summary"
-            )
+            facts = self._extract_facts_manually(interaction.answer, "summary")
             all_facts.extend(facts)
 
         # 按置信度排序
@@ -242,7 +230,11 @@ class Compressor:
             "total_interactions": len(interactions),
             "total_facts": len(all_facts),
             "key_facts": all_facts[:max_facts],
-            "average_confidence": sum(f.confidence for f in all_facts) / len(all_facts) if all_facts else 0
+            "average_confidence": (
+                sum(f.confidence for f in all_facts) / len(all_facts)
+                if all_facts
+                else 0
+            ),
         }
 
         return summary

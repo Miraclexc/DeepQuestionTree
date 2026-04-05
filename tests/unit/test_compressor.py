@@ -2,14 +2,14 @@
 单元测试 - Compressor 模块
 测试事实提取、上下文压缩、事实合并功能
 """
+
 import pytest
 
-from src.backend.modules.compressor import Compressor
 from src.backend.core.schema import Fact
+from src.backend.modules.compressor import Compressor
 
 
 @pytest.mark.unit
-@pytest.mark.asyncio
 class TestCompressor:
     """测试压缩器模块"""
 
@@ -27,11 +27,13 @@ class TestCompressor:
         """
         source_node_id = "test_node_123"
 
-        facts = await compressor.extract_facts(text, source_node_id)
+        facts, tokens, model = await compressor.extract_facts(text, source_node_id)
 
         # 应该提取到至少一些事实
         assert isinstance(facts, list)
         assert len(facts) > 0
+        assert isinstance(tokens, int)
+        assert isinstance(model, str)
 
         # 每个事实应该是 Fact 对象
         for fact in facts:
@@ -41,7 +43,7 @@ class TestCompressor:
 
     async def test_extract_facts_empty_text(self, compressor):
         """测试空文本"""
-        facts = await compressor.extract_facts("", "node_1")
+        facts, _, _ = await compressor.extract_facts("", "node_1")
         # 空文本应该返回空列表或很少的事实
         assert isinstance(facts, list)
 
@@ -69,11 +71,19 @@ class TestCompressor:
     async def test_merge_facts_no_duplicates(self, compressor):
         """测试合并无重复的事实"""
         existing_facts = [
-            Fact(content="深度学习是机器学习的子领域", source_node_id="node_1", confidence=0.9)
+            Fact(
+                content="深度学习是机器学习的子领域",
+                source_node_id="node_1",
+                confidence=0.9,
+            )
         ]
 
         new_facts = [
-            Fact(content="Transformer 于 2017 年提出", source_node_id="node_2", confidence=0.95)
+            Fact(
+                content="Transformer 于 2017 年提出",
+                source_node_id="node_2",
+                confidence=0.95,
+            )
         ]
 
         merged = await compressor.merge_facts(existing_facts, new_facts)
@@ -84,18 +94,24 @@ class TestCompressor:
     async def test_merge_facts_with_duplicates(self, compressor, embedding_manager):
         """测试合并重复事实"""
         existing_facts = [
-            Fact(content="深度学习是机器学习的一个子领域", source_node_id="node_1", confidence=0.9)
+            Fact(
+                content="深度学习是机器学习的一个子领域",
+                source_node_id="node_1",
+                confidence=0.9,
+            )
         ]
 
         # 语义相似的事实
         new_facts = [
-            Fact(content="深度学习属于机器学习的一种", source_node_id="node_2", confidence=0.95)
+            Fact(
+                content="深度学习属于机器学习的一种",
+                source_node_id="node_2",
+                confidence=0.95,
+            )
         ]
 
         merged = await compressor.merge_facts(
-            existing_facts,
-            new_facts,
-            similarity_threshold=0.85
+            existing_facts, new_facts, similarity_threshold=0.85
         )
 
         # 高相似度的事实应该被去重或替换
@@ -116,9 +132,7 @@ class TestCompressor:
         ]
 
         merged = await compressor.merge_facts(
-            existing_facts,
-            new_facts,
-            similarity_threshold=1.0  # 完全匹配
+            existing_facts, new_facts, similarity_threshold=1.0  # 完全匹配
         )
 
         # 应该保留高置信度的版本
@@ -153,13 +167,13 @@ class TestCompressor:
             QAInteraction(
                 question="什么是AI？",
                 answer="人工智能是计算机科学的一个分支。它专注于创建能够执行需要人类智能的任务的系统。",
-                tokens_used=100
+                tokens_used=100,
             ),
             QAInteraction(
                 question="AI 有哪些应用？",
                 answer="AI 应用广泛，包括医疗诊断、自动驾驶、语音识别等领域。",
-                tokens_used=80
-            )
+                tokens_used=80,
+            ),
         ]
 
         summary = compressor.summarize_interactions(interactions, max_facts=10)
@@ -182,7 +196,7 @@ class TestCompressorEdgeCases:
     async def test_extract_facts_special_characters(self, compressor):
         """测试包含特殊字符的文本"""
         text = "这是包含特殊字符的文本：@#$%^&*()，应该能正常处理。"
-        facts = await compressor.extract_facts(text, "node_1")
+        facts, _, _ = await compressor.extract_facts(text, "node_1")
 
         assert isinstance(facts, list)
 

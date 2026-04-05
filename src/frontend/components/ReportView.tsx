@@ -2,18 +2,20 @@
 
 import React from 'react';
 import { MarkdownRenderer } from "./MarkdownRenderer";
-import { X, FileText, Download, Lightbulb, Activity, AlertTriangle } from 'lucide-react';
-import { cn } from '@/lib/utils';
-// import { Button } from "@/components/ui/button"; // Module not found
+import { X, FileText, Download, Activity, AlertTriangle } from 'lucide-react';
+import { ReportData } from '@/lib/types';
+import { ReportSidebar } from './report/ReportSidebar';
+import { ReportTabs, ReportTab } from './report/ReportTabs';
+import { ReportUsageTable } from './report/ReportUsageTable';
 
 interface ReportViewProps {
-    report: any | null;
+    report: ReportData | null;
     isLoading: boolean;
     onClose: () => void;
 }
 
 export function ReportView({ report, isLoading, onClose }: ReportViewProps) {
-    const [activeTab, setActiveTab] = React.useState<"report" | "pruned" | "usage">("report");
+    const [activeTab, setActiveTab] = React.useState<ReportTab>("report");
 
     const handleExportPDF = async () => {
         if (!report) return;
@@ -37,6 +39,7 @@ export function ReportView({ report, isLoading, onClose }: ReportViewProps) {
     };
 
     if (!report && !isLoading) return null;
+    const activeReport = report;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -49,36 +52,16 @@ export function ReportView({ report, isLoading, onClose }: ReportViewProps) {
                         </div>
                         <div>
                             <h2 className="text-lg font-semibold text-foreground">Exploration Report</h2>
-                            <p className="text-xs text-muted-foreground">{report?.goal || "Generating insights..."}</p>
+                            <p className="text-xs text-muted-foreground">{activeReport?.goal || "Generating insights..."}</p>
                         </div>
                     </div>
                 </div>
 
-                {/* Tab Navigation */}
-                <div className="px-6 border-b flex gap-6 text-sm font-medium">
-                    <button
-                        onClick={() => setActiveTab("report")}
-                        className={cn("py-3 border-b-2 transition-all", activeTab === "report" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}
-                    >
-                        Full Report
-                    </button>
-                    <button
-                        onClick={() => setActiveTab("pruned")}
-                        className={cn("py-3 border-b-2 transition-all flex items-center gap-2", activeTab === "pruned" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}
-                    >
-                        <AlertTriangle className="w-3 h-3" />
-                        Pruned Paths
-                    </button>
-                    <button
-                        onClick={() => setActiveTab("usage")}
-                        className={cn("py-3 border-b-2 transition-all flex items-center gap-2", activeTab === "usage" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}
-                    >
-                        <Activity className="w-3 h-3" />
-                        LLM Usage
-                    </button>
+                <div className="flex items-center border-b">
+                    <ReportTabs activeTab={activeTab} onChange={setActiveTab} />
                     <div className="flex-1"></div>
                     <div className="flex items-center gap-2 py-2">
-                        {report && (
+                        {activeReport && (
                             <>
                                 <button
                                     onClick={handleExportPDF}
@@ -89,11 +72,11 @@ export function ReportView({ report, isLoading, onClose }: ReportViewProps) {
                                 </button>
                                 <button
                                     onClick={() => {
-                                        const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
+                                        const blob = new Blob([JSON.stringify(activeReport, null, 2)], { type: "application/json" });
                                         const url = URL.createObjectURL(blob);
                                         const a = document.createElement("a");
                                         a.href = url;
-                                        a.download = `report-${report.session_id}.json`;
+                                        a.download = `report-${activeReport.session_id}.json`;
                                         document.body.appendChild(a);
                                         a.click();
                                         document.body.removeChild(a);
@@ -127,56 +110,10 @@ export function ReportView({ report, isLoading, onClose }: ReportViewProps) {
                             </div>
                             <p className="text-sm text-muted-foreground animate-pulse">Compiling insights and analyzing paths...</p>
                         </div>
-                    ) : (
+                    ) : activeReport ? (
                         <div className="flex flex-col md:flex-row h-full">
-                            {/* Left Sidebar / Quick Stats */}
-                            <div className="w-full md:w-64 bg-muted/10 border-r p-6 space-y-6 overflow-y-auto">
-                                <div className="space-y-2">
-                                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Session Stats</h3>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="p-3 bg-card rounded border text-center">
-                                            <div className="text-xl font-bold text-primary">{report.statistics.total_facts}</div>
-                                            <div className="text-[10px] text-muted-foreground">Facts Found</div>
-                                        </div>
-                                        <div className="p-3 bg-card rounded border text-center">
-                                            <div className="text-xl font-bold text-primary">{report.statistics.tree_depth}</div>
-                                            <div className="text-[10px] text-muted-foreground">Max Depth</div>
-                                        </div>
-                                    </div>
-                                </div>
+                            <ReportSidebar report={activeReport} />
 
-                                <div className="space-y-4">
-                                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-                                        <Lightbulb className="h-3 w-3" />
-                                        Key Insights
-                                    </h3>
-                                    <ul className="space-y-3">
-                                        {report.key_insights.map((insight: string, idx: number) => (
-                                            <li key={idx} className="text-xs text-foreground bg-primary/5 p-2 rounded border border-primary/10 leading-relaxed">
-                                                {insight}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-
-                                {report.suggestions && (
-                                    <div className="space-y-4">
-                                        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-                                            <Activity className="h-3 w-3" />
-                                            Next Steps
-                                        </h3>
-                                        <ul className="space-y-2">
-                                            {report.suggestions.map((s: string, idx: number) => (
-                                                <li key={idx} className="text-xs text-muted-foreground pl-2 border-l-2 border-primary/30">
-                                                    {s}
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Main Report Area */}
                             <div className="flex-1 p-8 overflow-y-auto bg-card h-full" id="report-export-container">
                                 {activeTab === "report" && (
                                     <div className="max-w-3xl mx-auto">
@@ -185,15 +122,20 @@ export function ReportView({ report, isLoading, onClose }: ReportViewProps) {
                                                 Executive Summary
                                             </h3>
                                             <div className="text-sm leading-relaxed text-muted-foreground">
-                                                <MarkdownRenderer content={report.executive_summary} />
+                                                <MarkdownRenderer content={activeReport.executive_summary} />
                                             </div>
                                         </div>
 
                                         <hr className="my-8 border-muted" />
 
                                         <h3 className="text-2xl font-bold mb-6">Detailed Report</h3>
+                                        {activeReport.error_message && (
+                                            <div className="mb-6 rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
+                                                {activeReport.error_message}
+                                            </div>
+                                        )}
                                         <div className="markdown-content">
-                                            <MarkdownRenderer content={report.full_report || ""} />
+                                            <MarkdownRenderer content={activeReport.full_report || ""} />
                                         </div>
                                     </div>
                                 )}
@@ -212,9 +154,9 @@ export function ReportView({ report, isLoading, onClose }: ReportViewProps) {
                                             </div>
                                         </div>
 
-                                        {report.pruned_insights && report.pruned_insights.length > 0 ? (
+                                        {activeReport.pruned_insights && activeReport.pruned_insights.length > 0 ? (
                                             <div className="grid gap-4">
-                                                {report.pruned_insights.map((insight: string, idx: number) => (
+                                                {activeReport.pruned_insights.map((insight: string, idx: number) => (
                                                     <div key={idx} className="p-5 border rounded-lg bg-card hover:bg-muted/5 transition-colors shadow-sm">
                                                         <div className="flex gap-3">
                                                             <div className="mt-1 shrink-0">
@@ -237,7 +179,7 @@ export function ReportView({ report, isLoading, onClose }: ReportViewProps) {
                                     </div>
                                 )}
 
-                                {activeTab === "usage" && report.llm_stats && (
+                                {activeTab === "usage" && activeReport.llm_stats && (
                                     <div className="max-w-3xl mx-auto space-y-8">
                                         <div>
                                             <h2 className="text-2xl font-bold mb-2">LLM Utilization</h2>
@@ -247,57 +189,24 @@ export function ReportView({ report, isLoading, onClose }: ReportViewProps) {
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="p-6 border rounded-xl bg-card">
                                                 <div className="text-sm text-muted-foreground mb-1">Total API Calls</div>
-                                                <div className="text-3xl font-bold text-primary">{report.llm_stats.total_calls}</div>
+                                                <div className="text-3xl font-bold text-primary">{activeReport.llm_stats.total_calls}</div>
                                             </div>
                                             <div className="p-6 border rounded-xl bg-card">
                                                 <div className="text-sm text-muted-foreground mb-1">Total Tokens Used</div>
-                                                <div className="text-3xl font-bold text-primary">{report.llm_stats.total_tokens.toLocaleString()}</div>
+                                                <div className="text-3xl font-bold text-primary">{activeReport.llm_stats.total_tokens.toLocaleString()}</div>
                                             </div>
                                         </div>
 
                                         <div className="border rounded-xl overflow-hidden">
-                                            <table className="w-full text-sm text-left">
-                                                <thead className="bg-muted/50 text-muted-foreground font-medium">
-                                                    <tr>
-                                                        <th className="px-6 py-3">Model</th>
-                                                        <th className="px-6 py-3 text-right">Calls</th>
-                                                        <th className="px-6 py-3 text-right">Tokens</th>
-                                                        <th className="px-6 py-3 text-right">Avg. Tokens/Call</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y">
-                                                    {Object.entries(report.llm_stats.usage_by_model).map(([model, stats]: [string, any]) => (
-                                                        <tr key={model} className="hover:bg-muted/5">
-                                                            <td className="px-6 py-4 font-medium">{model}</td>
-                                                            <td className="px-6 py-4 text-right">{stats.calls}</td>
-                                                            <td className="px-6 py-4 text-right">{stats.tokens.toLocaleString()}</td>
-                                                            <td className="px-6 py-4 text-right">
-                                                                {Math.round(stats.tokens / stats.calls).toLocaleString()}
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
+                                            <ReportUsageTable usageByModel={activeReport.llm_stats.usage_by_model} />
                                         </div>
                                     </div>
                                 )}
                             </div>
                         </div>
-                    )}
+                    ) : null}
                 </div>
             </div>
         </div>
-    );
-}
-
-// Simple Button component fallback if UI lib is missing
-function SimpleButton({ children, className, ...props }: any) {
-    return (
-        <button
-            className={cn("px-4 py-2 rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors", className)}
-            {...props}
-        >
-            {children}
-        </button>
     );
 }

@@ -2,13 +2,14 @@
 持久化模块
 负责会话数据的保存和加载
 """
+
 import json
 import shutil
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from ..core.schema import SessionData
 from ..config_loader import get_settings
+from ..core.schema import SessionData
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -24,21 +25,7 @@ class SessionManager:
         """初始化会话管理器"""
         self.settings = get_settings()
         self.sessions_dir = Path(self.settings.storage.sessions_dir)
-        self.sessions_dir = Path(self.settings.storage.sessions_dir)
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
-        self.active_session: Optional[SessionData] = None
-
-    def set_active_session(self, session: SessionData):
-        """设置当前活跃的会话（内存中）"""
-        self.active_session = session
-
-    def get_active_session(self) -> Optional[SessionData]:
-        """获取当前活跃的会话"""
-        return self.active_session
-
-    def clear_active_session(self):
-        """清除活跃会话"""
-        self.active_session = None
 
     async def save_session(self, session: SessionData) -> bool:
         """
@@ -58,7 +45,7 @@ class SessionManager:
             session_json = session.model_dump_json(indent=2, ensure_ascii=False)
 
             # 原子写入：先写临时文件，再重命名
-            with open(temp_path, 'w', encoding='utf-8') as f:
+            with open(temp_path, "w", encoding="utf-8") as f:
                 f.write(session_json)
 
             # 原子操作重命名
@@ -88,7 +75,7 @@ class SessionManager:
                 logger.warning(f"会话文件不存在: {file_path}")
                 return None
 
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 session_json = f.read()
 
             # 反序列化
@@ -146,7 +133,7 @@ class SessionManager:
                     continue
 
                 try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
+                    with open(file_path, "r", encoding="utf-8") as f:
                         session_data = json.load(f)
 
                     # 提取基本信息
@@ -159,7 +146,7 @@ class SessionManager:
                         "total_simulations": session_data.get("total_simulations", 0),
                         "total_nodes": len(session_data.get("nodes", {})),
                         "total_facts": len(session_data.get("global_facts", [])),
-                        "file_size": file_path.stat().st_size
+                        "file_size": file_path.stat().st_size,
                     }
                     sessions.append(session_info)
 
@@ -256,10 +243,10 @@ class SessionManager:
 
             # 更新报告字段
             session.report = report_data
-            
+
             # 保存整个会话
             return await self.save_session(session)
-            
+
         except Exception as e:
             logger.error(f"保存会话报告失败: {e}")
             return False
@@ -276,9 +263,9 @@ class SessionManager:
             legacy_path = self.sessions_dir / f"{session_id}_report.json"
             if legacy_path.exists():
                 logger.info(f"加载旧版报告文件: {legacy_path}")
-                with open(legacy_path, 'r', encoding='utf-8') as f:
+                with open(legacy_path, "r", encoding="utf-8") as f:
                     return json.load(f)
-            
+
             return None
         except Exception as e:
             logger.error(f"加载会话报告失败: {e}")
@@ -310,13 +297,14 @@ def auto_save(interval: int = 5):
     Args:
         interval: 保存间隔（步数）
     """
+
     def decorator(func):
         async def wrapper(*args, **kwargs):
             # 执行原函数
             result = await func(*args, **kwargs)
 
             # 获取会话实例（假设第一个参数是引擎或包含会话的对象）
-            if args and hasattr(args[0], 'session'):
+            if args and hasattr(args[0], "session"):
                 session = args[0].session
 
                 # 检查是否需要保存
@@ -326,4 +314,5 @@ def auto_save(interval: int = 5):
                     logger.debug(f"自动保存会话 {session.session_id}")
 
             return result
+
     return decorator

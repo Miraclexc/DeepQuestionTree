@@ -1,0 +1,63 @@
+[project]
+name = "deep-question-tree"
+version = "0.1.0"
+description = "MCTS + LLM exploration workspace with a FastAPI backend and Next.js frontend"
+readme = "README.md"
+requires-python = ">=3.12,<3.15"
+dependencies = [
+    "pydantic==2.12.5",
+    "pydantic-settings==2.13.1",
+    "fastapi==0.135.3",
+    "uvicorn[standard]==0.42.0",
+    "openai==2.30.0",
+    "tenacity==9.1.4",
+    "sentence-transformers==5.3.0",
+    "numpy==2.4.4",
+    "PyYAML==6.0.3",
+    "python-dotenv==1.2.2",
+    "Jinja2==3.1.6",
+    "python-multipart==0.0.22",
+    "colorlog==6.10.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.0.2",
+    "pytest-cov==7.1.0",
+    "pytest-asyncio==1.3.0",
+    "httpx==0.28.1",
+    "black==25.11.0",
+    "isort==7.0.0",
+    "mypy==1.19.0",
+    "types-pyyaml>=6.0.12.20250915",
+]
+
+[tool.uv]
+package = false
+
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+
+[tool.isort]
+profile = "black"
+py_version = 312
+src_paths = ["src", "tests"]
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "."
+packages = ["src.backend"]
+namespace_packages = true
+explicit_package_bases = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = [
+    "numpy",
+    "openai",
+    "sentence_transformers",
+]
+ignore_missing_imports = true
