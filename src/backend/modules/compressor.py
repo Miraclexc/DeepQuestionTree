@@ -3,7 +3,6 @@
 负责上下文压缩和事实提取
 """
 
-import json
 from typing import Any, Dict, List
 
 from ..core.schema import Fact, QAInteraction, SessionData
@@ -53,24 +52,26 @@ class Compressor:
             # 调用 LLM 提取事实
             messages = [{"role": "user", "content": prompt}]
             response = await self.llm.chat_completion(
-                messages=messages, temperature=0.2, json_mode=True  # 低温度保证准确性
+                messages=messages,
+                temperature=0.2,
+                response_contract="json_array",  # 低温度保证准确性
             )
 
             # 解析响应
             facts = []
-            try:
-                facts_data = json.loads(response.content)
-                if isinstance(facts_data, list):
-                    for fact_data in facts_data:
-                        if isinstance(fact_data, dict) and "content" in fact_data:
-                            fact = Fact(
-                                content=fact_data["content"],
-                                source_node_id=source_node_id,
-                                confidence=fact_data.get("confidence", 1.0),
-                            )
-                            facts.append(fact)
-            except json.JSONDecodeError:
-                logger.warning(f"无法解析事实提取响应: {response.content[:100]}...")
+            facts_data = response.structured_content or []
+            if isinstance(facts_data, list):
+                for fact_data in facts_data:
+                    if isinstance(fact_data, dict) and "content" in fact_data:
+                        fact = Fact(
+                            content=fact_data["content"],
+                            source_node_id=source_node_id,
+                            confidence=fact_data.get("confidence", 1.0),
+                        )
+                        facts.append(fact)
+
+            if not facts:
+                logger.warning("事实提取未返回有效的 JSON 对象数组")
 
             # 如果 JSON 解析失败或为空，尝试手动提取
             if not facts:

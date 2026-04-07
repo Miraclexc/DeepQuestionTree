@@ -3,14 +3,68 @@
 测试完整的 MCTS 迭代流程
 """
 
+from types import SimpleNamespace
+
 import pytest
 
 from src.backend.core.mcts_engine import MCTSEngine
 from src.backend.core.schema import Node, QAInteraction, SessionData
 from src.backend.llm.embedding import get_embedding_manager
+from src.backend.llm.hash_embedding import build_hash_embedding
 from src.backend.llm.mock_client import MockClient
+from src.backend.modules.compressor import Compressor
 from src.backend.modules.pruner import Pruner
 from src.backend.modules.questioner import Questioner
+
+
+class ContractSequenceLLM:
+    def __init__(self):
+        self.response_contracts: list[str] = []
+        self.responses = [
+            {
+                "content": '["后续问题是什么？"]',
+                "structured_content": ["后续问题是什么？"],
+                "tokens": 11,
+                "model": "structured-model",
+            },
+            {
+                "content": "这是一个结构化契约下生成的回答。",
+                "structured_content": None,
+                "tokens": 13,
+                "model": "structured-model",
+            },
+            {
+                "content": '[{"content": "结构化事实", "confidence": 0.92}]',
+                "structured_content": [{"content": "结构化事实", "confidence": 0.92}],
+                "tokens": 17,
+                "model": "structured-model",
+            },
+        ]
+
+    async def chat_completion(
+        self,
+        messages,
+        temperature=0.7,
+        max_tokens=None,
+        response_contract="text",
+    ):
+        self.response_contracts.append(response_contract)
+        response = self.responses.pop(0)
+        return SimpleNamespace(
+            content=response["content"],
+            structured_content=response.get("structured_content"),
+            tokens=response["tokens"],
+            model=response["model"],
+        )
+
+    async def get_embedding(self, text):
+        return build_hash_embedding(text)
+
+    async def get_usage_stats(self):
+        return {}
+
+    async def reset_usage_stats(self):
+        return None
 
 
 @pytest.mark.integration
@@ -201,6 +255,43 @@ class TestMCTSFlow:
 
         # 应该选中访问次数最多的子节点
         assert best_child.id == child1.id
+
+    async def test_mcts_structured_contract_chain(self):
+        session = SessionData(global_goal="测试结构化输出契约")
+        root_node = Node(
+            id=session.root_node_id,
+            depth=0,
+            interaction=QAInteraction(
+                question="测试结构化输出契约",
+                answer="探索起点",
+            ),
+        )
+        session.add_node(root_node)
+
+        llm_client = ContractSequenceLLM()
+        embedding_manager = get_embedding_manager()
+        embedding_manager.set_client(llm_client, prefer_client=True)
+
+        questioner = Questioner(llm_client, embedding_manager)
+        compressor = Compressor(llm_client)
+        compressor.embedding_manager.set_client(llm_client, prefer_client=True)
+
+        engine = MCTSEngine(
+            session,
+            questioner=questioner,
+            compressor=compressor,
+        )
+
+        new_node_ids = await engine._expand(session, root_node)
+        assert len(new_node_ids) == 1
+
+        child_node = session.nodes[new_node_ids[0]]
+        await engine._process_node(session, child_node)
+
+        assert llm_client.response_contracts == ["json_array", "text", "json_array"]
+        assert child_node.interaction.answer == "这是一个结构化契约下生成的回答。"
+        assert session.global_facts
+        assert session.global_facts[0].content == "结构化事实"
 
 
 @pytest.mark.integration

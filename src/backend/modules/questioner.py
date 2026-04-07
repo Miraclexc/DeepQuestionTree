@@ -83,24 +83,23 @@ class Questioner:
             # 调用 LLM 生成问题
             messages = [{"role": "user", "content": prompt}]
             response = await self.llm.chat_completion(
-                messages=messages, temperature=0.8, json_mode=True  # 较高的创造性
+                messages=messages,
+                temperature=0.8,
+                response_contract="json_array",  # 较高的创造性
             )
 
-            # 解析响应 (使用 response.content)
-            try:
-                questions = json.loads(response.content)
-                if isinstance(questions, list):
-                    # 过滤和验证问题
-                    valid_questions = []
-                    for q in questions[:k]:
-                        if isinstance(q, str) and len(q.strip()) > 5:
-                            valid_questions.append(q.strip())
+            # 解析响应
+            questions = response.structured_content or []
+            if isinstance(questions, list):
+                valid_questions = []
+                for q in questions[:k]:
+                    if isinstance(q, str) and len(q.strip()) > 5:
+                        valid_questions.append(q.strip())
+                if valid_questions:
                     return valid_questions
-            except json.JSONDecodeError:
-                logger.warning(f"无法解析问题生成响应: {response.content[:100]}...")
 
-            # 如果 JSON 解析失败，尝试手动提取
-            return self._extract_questions_from_text(response.content)
+            logger.warning("问题生成未返回有效的 JSON 字符串数组")
+            return self._get_default_questions(k)
 
         except Exception as e:
             logger.error(f"生成候选问题失败: {e}")
@@ -147,7 +146,9 @@ class Questioner:
             # 调用 LLM 评估
             messages = [{"role": "user", "content": prompt}]
             response = await self.llm.chat_completion(
-                messages=messages, temperature=0.3, json_mode=True  # 较低的随机性
+                messages=messages,
+                temperature=0.3,
+                response_contract="text",  # 较低的随机性
             )
 
             # 解析分数 (使用 response.content)
@@ -189,7 +190,7 @@ class Questioner:
 
             # 使用 LLM 客户端
             response = await self.llm.chat_completion(
-                messages=messages, temperature=0.7, json_mode=False
+                messages=messages, temperature=0.7, response_contract="text"
             )
 
             return response.content, response.tokens, response.model

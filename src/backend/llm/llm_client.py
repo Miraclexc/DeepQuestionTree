@@ -3,7 +3,6 @@ OpenAI 兼容 LLM 客户端实现
 支持 OpenAI、DeepSeek、Moonshot 等所有兼容 OpenAI API 的服务
 """
 
-import json
 from typing import Any, Dict, List, Optional
 
 import openai
@@ -15,7 +14,16 @@ from tenacity import (
 )
 
 from ..config_loader import get_settings
-from .client_interface import BaseLLMClient, CompletionResponse
+from ..utils.logger import get_logger
+from .client_interface import (
+    BaseLLMClient,
+    CompletionResponse,
+    ResponseContract,
+    StructuredOutputContractError,
+    parse_structured_content,
+)
+
+logger = get_logger(__name__)
 
 
 class OpenAICompatibleClient(BaseLLMClient):
@@ -52,7 +60,7 @@ class OpenAICompatibleClient(BaseLLMClient):
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
-        json_mode: bool = False,
+        response_contract: ResponseContract = "text",
     ) -> CompletionResponse:
         """
         执行对话请求，包含自动重试逻辑
@@ -66,7 +74,9 @@ class OpenAICompatibleClient(BaseLLMClient):
                 model = self.decision_model
 
             # 设置响应格式
-            response_format = {"type": "json_object"} if json_mode else None
+            response_format = (
+                {"type": "json_object"} if response_contract == "json_object" else None
+            )
 
             # 发送请求
             response = await self.client.chat.completions.create(
@@ -79,6 +89,20 @@ class OpenAICompatibleClient(BaseLLMClient):
 
             # 提取内容
             content = response.choices[0].message.content or ""
+            structured_content = None
+            if response_contract != "text":
+                try:
+                    structured_content = parse_structured_content(
+                        content,
+                        response_contract,
+                    )
+                except StructuredOutputContractError as exc:
+                    logger.warning(
+                        "Structured response contract mismatch for %s: %s",
+                        response_contract,
+                        exc,
+                    )
+                    raise
 
             # 更新使用统计
             tokens = 0
@@ -92,8 +116,15 @@ class OpenAICompatibleClient(BaseLLMClient):
             self.request_count += 1
 
             return CompletionResponse(
-                content=content, model=model, tokens=tokens, cost=cost
+                content=content,
+                model=model,
+                tokens=tokens,
+                cost=cost,
+                structured_content=structured_content,
             )
+
+        except StructuredOutputContractError:
+            raise
 
         except openai.AuthenticationError as e:
             raise Exception(f"API 认证失败: {e}")

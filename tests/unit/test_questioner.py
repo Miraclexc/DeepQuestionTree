@@ -3,10 +3,43 @@
 测试问题生成、价值评估、重复检测功能
 """
 
+from types import SimpleNamespace
+
 import pytest
 
 from src.backend.core.schema import Fact
 from src.backend.modules.questioner import Questioner
+
+
+class ContractAwareQuestionerLLM:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.response_contracts: list[str] = []
+
+    async def chat_completion(
+        self,
+        messages,
+        temperature=0.7,
+        max_tokens=None,
+        response_contract="text",
+    ):
+        self.response_contracts.append(response_contract)
+        response = self.responses.pop(0)
+        return SimpleNamespace(
+            content=response["content"],
+            structured_content=response.get("structured_content"),
+            tokens=response.get("tokens", 0),
+            model=response.get("model", "contract-aware"),
+        )
+
+    async def get_embedding(self, text):
+        return [0.1, 0.2, 0.3]
+
+    async def get_usage_stats(self):
+        return {}
+
+    async def reset_usage_stats(self):
+        return None
 
 
 @pytest.mark.unit
@@ -191,6 +224,53 @@ class TestQuestioner:
         assert isinstance(questions, list)
         assert len(questions) == 3
         assert all(isinstance(q, str) for q in questions)
+
+    async def test_generate_candidates_uses_json_array_contract(
+        self,
+        embedding_manager,
+    ):
+        llm_client = ContractAwareQuestionerLLM(
+            [
+                {
+                    "content": '["问题一是什么？", "问题二是什么？"]',
+                    "structured_content": ["问题一是什么？", "问题二是什么？"],
+                }
+            ]
+        )
+        questioner = Questioner(llm_client, embedding_manager)
+
+        questions = await questioner.generate_candidates(
+            context_facts=[],
+            current_answer="当前回答",
+            goal="测试目标",
+            k=2,
+        )
+
+        assert llm_client.response_contracts == ["json_array"]
+        assert questions == ["问题一是什么？", "问题二是什么？"]
+
+    async def test_evaluate_question_value_uses_text_contract(
+        self,
+        embedding_manager,
+    ):
+        llm_client = ContractAwareQuestionerLLM(
+            [
+                {
+                    "content": "8",
+                    "structured_content": None,
+                }
+            ]
+        )
+        questioner = Questioner(llm_client, embedding_manager)
+
+        score = await questioner.evaluate_question_value(
+            question="这个问题有多重要？",
+            known_facts=[],
+            goal="测试目标",
+        )
+
+        assert llm_client.response_contracts == ["text"]
+        assert score == 8.0
 
 
 @pytest.mark.unit

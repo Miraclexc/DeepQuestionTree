@@ -145,6 +145,18 @@ npm run dev
 - [`./testing-and-e2e.md`](./testing-and-e2e.md)
 - [`./frontend-testing.md`](./frontend-testing.md)
 
+### 5.4 改 LLM client / prompts / structured output 时
+
+同步检查以下位置：
+
+- [`../src/backend/llm/client_interface.py`](../src/backend/llm/client_interface.py)
+- [`../src/backend/llm/llm_client.py`](../src/backend/llm/llm_client.py)
+- [`../config/prompts.yaml`](../config/prompts.yaml)
+- [`./llm-structured-output-contract.md`](./llm-structured-output-contract.md)
+- `tests/unit/test_llm_client_contracts.py`
+
+如果结构化输出的顶层形状、fallback 或 provider 校验方式发生变化，必须同时更新契约文档和对应测试。
+
 ## 6. Quality And Validation
 
 项目级测试与验收矩阵以 [`testing-and-e2e.md`](./testing-and-e2e.md) 为唯一事实来源。开发者日常至少应知道以下入口：
@@ -171,6 +183,7 @@ uv run python run_tests.py ci
 - [`./developer-guide.md`](./developer-guide.md)：开发维护
 - [`./project-overview.md`](./project-overview.md)：真实架构与边界
 - [`./application-layer-and-auth.md`](./application-layer-and-auth.md)：接口与鉴权
+- [`./llm-structured-output-contract.md`](./llm-structured-output-contract.md)：LLM 结构化输出契约
 - [`./testing-and-e2e.md`](./testing-and-e2e.md)：项目级测试
 - [`./frontend-testing.md`](./frontend-testing.md)：前端测试
 
@@ -185,6 +198,7 @@ uv run python run_tests.py ci
 
 1. [`../README.md`](../README.md)
 2. [`./project-overview.md`](./project-overview.md)
-3. [`./application-layer-and-auth.md`](./application-layer-and-auth.md)
-4. [`./testing-and-e2e.md`](./testing-and-e2e.md)
-5. [`./frontend-testing.md`](./frontend-testing.md)
+3. [`./llm-structured-output-contract.md`](./llm-structured-output-contract.md)
+4. [`./application-layer-and-auth.md`](./application-layer-and-auth.md)
+5. [`./testing-and-e2e.md`](./testing-and-e2e.md)
+6. [`./frontend-testing.md`](./frontend-testing.md)

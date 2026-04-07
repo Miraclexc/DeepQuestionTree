@@ -49,7 +49,7 @@ Backend (FastAPI app factory)
 | Repository boundary | 将 `SessionManager` 包装成显式应用层仓储 | `src/backend/services/session_repository.py` |
 | Core | 领域对象与 MCTS engine | `src/backend/core/*` |
 | Domain modules | questioner、compressor、pruner、integrator、persistence | `src/backend/modules/*` |
-| LLM / embedding | OpenAI-compatible client、mock client、embedding manager | `src/backend/llm/*` |
+| LLM / embedding | OpenAI-compatible client、mock client、embedding manager、结构化输出契约 | `src/backend/llm/*` |
 
 ### 2.2 Frontend modules
 
@@ -129,6 +129,22 @@ Backend (FastAPI app factory)
 
 - 后端：`config/settings.yaml`、根 `.env`、进程环境变量
 - 前端：`src/frontend/.env.local`
+
+### 4.1 LLM structured-output boundary
+
+后端 LLM 层当前不再暴露布尔 JSON 模式，而是显式区分三种响应契约：
+
+- `text`
+- `json_object`
+- `json_array`
+
+当前真实边界：
+
+- `json_object` 通过 OpenAI-compatible `response_format={"type":"json_object"}` 约束；
+- `json_array` 不依赖 provider 的对象模式，而是由 Prompt 明确数组格式，再由客户端校验顶层必须是数组；
+- 业务模块只消费解析后的结构化载荷，不再在多个模块里重复 `json.loads()`。
+
+结构化调用的唯一细则见 [`llm-structured-output-contract.md`](./llm-structured-output-contract.md)。
 
 ## 5. API And Read-Model Shape
 

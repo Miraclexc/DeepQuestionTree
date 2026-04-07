@@ -3,10 +3,43 @@
 测试事实提取、上下文压缩、事实合并功能
 """
 
+from types import SimpleNamespace
+
 import pytest
 
 from src.backend.core.schema import Fact
 from src.backend.modules.compressor import Compressor
+
+
+class ContractAwareCompressorLLM:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.response_contracts: list[str] = []
+
+    async def chat_completion(
+        self,
+        messages,
+        temperature=0.7,
+        max_tokens=None,
+        response_contract="text",
+    ):
+        self.response_contracts.append(response_contract)
+        response = self.responses.pop(0)
+        return SimpleNamespace(
+            content=response["content"],
+            structured_content=response.get("structured_content"),
+            tokens=response.get("tokens", 0),
+            model=response.get("model", "contract-aware"),
+        )
+
+    async def get_embedding(self, text):
+        return [0.1, 0.2, 0.3]
+
+    async def get_usage_stats(self):
+        return {}
+
+    async def reset_usage_stats(self):
+        return None
 
 
 @pytest.mark.unit
@@ -183,6 +216,26 @@ class TestCompressor:
         assert summary["total_interactions"] == 2
         assert "total_facts" in summary
         assert "key_facts" in summary
+
+    async def test_extract_facts_uses_json_array_contract(self):
+        llm_client = ContractAwareCompressorLLM(
+            [
+                {
+                    "content": '[{"content": "事实1", "confidence": 0.9}]',
+                    "structured_content": [{"content": "事实1", "confidence": 0.9}],
+                    "tokens": 12,
+                    "model": "structured-model",
+                }
+            ]
+        )
+        compressor = Compressor(llm_client)
+
+        facts, tokens, model = await compressor.extract_facts("测试文本", "node_1")
+
+        assert llm_client.response_contracts == ["json_array"]
+        assert [fact.content for fact in facts] == ["事实1"]
+        assert tokens == 12
+        assert model == "structured-model"
 
 
 @pytest.mark.unit

@@ -1,6 +1,6 @@
 # Documentation Index
 
-> Last Updated: 2026-04-05
+> Last Updated: 2026-04-07
 >
 > 本页唯一负责：按受众和职责组织文档入口，不承载实现细节本身。
 
@@ -31,6 +31,7 @@
 |---|---|
 | [project-overview.md](./project-overview.md) | 当前真实架构、运行时约束、配置边界、数据流和已知原型边界。 |
 | [application-layer-and-auth.md](./application-layer-and-auth.md) | 统一 API 路由、鉴权规则、错误响应与 read-model 契约。 |
+| [llm-structured-output-contract.md](./llm-structured-output-contract.md) | 后端 LLM 结构化输出契约：`text` / `json_object` / `json_array`、调用方映射、provider 边界与 fallback 规则。 |
 
 ## Recommended Reading Paths
 
@@ -44,5 +45,6 @@
 1. [`README.md`](../README.md)
 2. [`developer-guide.md`](./developer-guide.md)
 3. [`project-overview.md`](./project-overview.md)
-4. [`application-layer-and-auth.md`](./application-layer-and-auth.md)
-5. [`testing-and-e2e.md`](./testing-and-e2e.md)
+4. [`llm-structured-output-contract.md`](./llm-structured-output-contract.md)
+5. [`application-layer-and-auth.md`](./application-layer-and-auth.md)
+6. [`testing-and-e2e.md`](./testing-and-e2e.md)

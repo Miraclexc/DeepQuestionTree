@@ -7,7 +7,12 @@ import json
 import random
 from typing import Any, Dict, List, Optional
 
-from .client_interface import BaseLLMClient, CompletionResponse
+from .client_interface import (
+    BaseLLMClient,
+    CompletionResponse,
+    ResponseContract,
+    parse_structured_content,
+)
 from .hash_embedding import build_hash_embedding
 
 
@@ -50,7 +55,7 @@ class MockClient(BaseLLMClient):
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
-        json_mode: bool = False,
+        response_contract: ResponseContract = "text",
     ) -> CompletionResponse:
         """
         Mock 聊天完成
@@ -64,45 +69,15 @@ class MockClient(BaseLLMClient):
         content = ""
 
         # 根据消息内容返回相应的 Mock 数据
-        if (
-            "提出" in last_msg
-            or "candidates" in last_msg
-            or "候选" in last_msg
-            or "question" in last_msg.lower()
-        ):
-            # 生成候选问题
-            num_questions = min(max(3, random.randint(2, 5)), len(self.mock_questions))
-            selected_questions = random.sample(self.mock_questions, num_questions)
-            content = json.dumps(selected_questions, ensure_ascii=False)
+        if response_contract == "json_array":
+            content = self._build_json_array_content(last_msg)
+
+        elif response_contract == "json_object":
+            content = self._build_json_object_content(last_msg)
 
         elif "评估" in last_msg or "score" in last_msg or "信息增益" in last_msg:
-            # 评估问题价值
             score = random.randint(1, 10)
-            reasons = [
-                "可能揭示新的技术细节",
-                "有助于了解应用场景",
-                "可能发现潜在风险",
-                "能够补充关键信息",
-                "探索性较强",
-            ]
-            content = json.dumps(
-                {"score": score, "reason": random.choice(reasons)}, ensure_ascii=False
-            )
-
-        elif (
-            ("提取" in last_msg and "事实" in last_msg)
-            or "extract facts" in last_msg.lower()
-        ) and json_mode:
-            # 提取事实
-            num_facts = random.randint(2, 4)  # 至少返回2个事实
-            selected_facts = random.sample(
-                self.mock_facts, min(num_facts, len(self.mock_facts))
-            )
-            facts_list = [
-                {"content": fact, "confidence": round(random.uniform(0.7, 1.0), 2)}
-                for fact in selected_facts
-            ]
-            content = json.dumps(facts_list, ensure_ascii=False)
+            content = str(score)
 
         elif "概括" in last_msg or "summarize" in last_msg or "总结" in last_msg:
             # 路径概括
@@ -152,8 +127,14 @@ class MockClient(BaseLLMClient):
 
             content = answer
 
+        structured_content = parse_structured_content(content, response_contract)
+
         return CompletionResponse(
-            content=content, model="mock-model", tokens=tokens, cost=0.0
+            content=content,
+            model="mock-model",
+            tokens=tokens,
+            cost=0.0,
+            structured_content=structured_content,
         )
 
     async def get_embedding(self, text: str) -> List[float]:
@@ -180,3 +161,70 @@ class MockClient(BaseLLMClient):
         self.total_tokens_used = 0
         self.total_cost = 0.0
         self.request_count = 0
+
+    def _build_json_array_content(self, last_msg: str) -> str:
+        if (
+            "提取" in last_msg
+            and "事实" in last_msg
+            or "extract facts" in last_msg.lower()
+        ):
+            num_facts = random.randint(2, 4)
+            selected_facts = random.sample(
+                self.mock_facts,
+                min(num_facts, len(self.mock_facts)),
+            )
+            facts_list = [
+                {"content": fact, "confidence": round(random.uniform(0.7, 1.0), 2)}
+                for fact in selected_facts
+            ]
+            return json.dumps(facts_list, ensure_ascii=False)
+
+        if (
+            "提出" in last_msg
+            or "candidates" in last_msg
+            or "候选" in last_msg
+            or "question" in last_msg.lower()
+        ):
+            num_questions = min(max(3, random.randint(2, 5)), len(self.mock_questions))
+            selected_questions = random.sample(self.mock_questions, num_questions)
+            return json.dumps(selected_questions, ensure_ascii=False)
+
+        if "见解" in last_msg or "insight" in last_msg.lower():
+            insights = [
+                "关键技术路线已经初步明确",
+                "主要风险集中在工程落地阶段",
+                "当前证据支持继续深入验证",
+            ]
+            return json.dumps(insights, ensure_ascii=False)
+
+        if "建议" in last_msg or "后续" in last_msg or "next" in last_msg.lower():
+            suggestions = [
+                "继续验证关键假设",
+                "补充成本与风险数据",
+                "对比替代技术路线",
+            ]
+            return json.dumps(suggestions, ensure_ascii=False)
+
+        fallback_items = self.mock_questions[:3]
+        return json.dumps(fallback_items, ensure_ascii=False)
+
+    def _build_json_object_content(self, last_msg: str) -> str:
+        score = random.randint(1, 10)
+        reasons = [
+            "可能揭示新的技术细节",
+            "有助于了解应用场景",
+            "可能发现潜在风险",
+            "能够补充关键信息",
+            "探索性较强",
+        ]
+
+        payload = {
+            "score": score,
+            "reason": random.choice(reasons),
+        }
+        if "评估" not in last_msg and "score" not in last_msg.lower():
+            payload = {
+                "result": "ok",
+                "message": "mock-object-response",
+            }
+        return json.dumps(payload, ensure_ascii=False)

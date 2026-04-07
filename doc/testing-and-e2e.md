@@ -8,12 +8,13 @@
 
 ## 1. Test Layers
 
-当前测试分为六层：
+当前测试分为七层：
 
 | Layer | Location | Default Behavior |
 |---|---|---|
 | Quality | `black / isort / mypy` | 默认纳入 `run_tests.py quality` 与 `run_tests.py ci` |
 | Unit | `tests/unit/` | 默认执行 |
+| Offline contract | `tests/unit/test_llm_client_contracts.py` | 默认执行，验证 `text` / `json_object` / `json_array` 契约 |
 | Integration | `tests/integration/` | 默认执行，包含并发 MCTS 回归 |
 | Backend acceptance | `pytest tests/ -v --cov-fail-under=80` | 默认纳入 `run_tests.py ci` |
 | Real API E2E | `tests/e2e/` | 默认不收集，必须显式开启 |
@@ -49,6 +50,12 @@ uv run python run_tests.py all
 
 ```bash
 uv run pytest tests/e2e/ -v --run-e2e --e2e-provider openai-compatible
+```
+
+真实 provider contract smoke：
+
+```bash
+uv run pytest tests/e2e/test_provider_contracts.py -v --run-e2e --e2e-provider openai-compatible
 ```
 
 说明：
@@ -113,6 +120,11 @@ uv run python -m src.backend.main
    - `/api/sessions/{session_id}/report`
 5. 等待探索完成并校验会话文件是否落盘
 
+此外，`tests/e2e/test_provider_contracts.py` 会直接调用真实 provider，验证：
+
+- `json_object` 契约可以返回可解析对象
+- `json_array` 契约可以返回可解析数组
+
 ### 5.2 Supported providers
 
 当前支持两类 provider profile：
@@ -176,6 +188,7 @@ uv run python -m src.backend.main
 ## 7. Current Boundaries
 
 - 后端真实 E2E 只覆盖独立进程 HTTP API
+- 默认 CI 通过离线契约单测覆盖结构化输出接口，但不直连真实 provider
 - 前端浏览器链路由 [`frontend-testing.md`](./frontend-testing.md) 维护
 - provider 抽象只存在于测试层，不改业务 DTO
 - 默认保持 `EMBEDDING__USE_LOCAL=true`，避免 Deepseek E2E 依赖 embedding API

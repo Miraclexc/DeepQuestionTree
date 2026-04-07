@@ -221,11 +221,18 @@ class Integrator:
             # 调用 LLM
             messages = [{"role": "user", "content": prompt}]
             response = await self.llm.chat_completion(
-                messages=messages, temperature=0.7  # 提高创造性
+                messages=messages,
+                temperature=0.7,
+                response_contract="json_array",  # 提高创造性
             )
 
-            # 解析见解 (JSON)
-            return self._parse_json_list(response.content)
+            if isinstance(response.structured_content, list):
+                return [
+                    item
+                    for item in response.structured_content
+                    if isinstance(item, str)
+                ]
+            return []
 
         except Exception as e:
             logger.error(f"提取关键见解失败: {e}")
@@ -249,39 +256,22 @@ class Integrator:
 
             messages = [{"role": "user", "content": prompt}]
             response = await self.llm.chat_completion(
-                messages=messages, temperature=0.7
+                messages=messages,
+                temperature=0.7,
+                response_contract="json_array",
             )
 
-            return self._parse_json_list(response.content)
+            if isinstance(response.structured_content, list):
+                return [
+                    item
+                    for item in response.structured_content
+                    if isinstance(item, str)
+                ]
+            return []
 
         except Exception as e:
             logger.error(f"生成后续建议失败: {e}")
             return ["继续深入当前的探索路径", "验证已获得的关键假设"]
-
-    def _parse_json_list(self, response: str) -> List[str]:
-        """解析 JSON 列表响应"""
-        import json
-        import re
-
-        try:
-            # 尝试直接解析
-            return json.loads(response)
-        except json.JSONDecodeError:
-            try:
-                # 尝试提取代码块中的内容
-                match = re.search(r"\[.*\]", response, re.DOTALL)
-                if match:
-                    return json.loads(match.group(0))
-            except Exception:
-                pass
-
-        # 降级：简单的行处理
-        lines = [
-            line.strip().strip('"').strip("'").strip(",").strip("- ")
-            for line in response.split("\n")
-            if line.strip()
-        ]
-        return [l for l in lines if len(l) > 5]
 
     def _get_session_statistics(self, session: SessionData) -> Dict:
         """获取会话统计信息"""

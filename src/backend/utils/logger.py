@@ -102,7 +102,11 @@ class LLMTraceLogger:
         self.logger.addHandler(file_handler)
 
     def log_request(
-        self, messages: list, temperature: float, model: str, json_mode: bool = False
+        self,
+        messages: list,
+        temperature: float,
+        model: str,
+        response_contract: str = "text",
     ) -> str:
         """记录 LLM 请求"""
         req_id = str(uuid.uuid4())[:8]
@@ -110,7 +114,7 @@ class LLMTraceLogger:
         log_msg = f"[{req_id}] REQUEST\n"
         log_msg += f"Model: {model}\n"
         log_msg += f"Temperature: {temperature}\n"
-        log_msg += f"JSON Mode: {json_mode}\n"
+        log_msg += f"Response Contract: {response_contract}\n"
         log_msg += f"Messages:\n"
 
         for i, msg in enumerate(messages):
