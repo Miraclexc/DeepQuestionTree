@@ -41,4 +41,5 @@ async def test_real_provider_smoke_flow(e2e_server):
         assert report_payload["session_id"] == session_id
         assert "statistics" in report_payload
 
-        assert e2e_server.session_file(session_id).exists()
+        assert e2e_server.session_db_path.exists()
+        assert e2e_server.has_session_row(session_id) is True

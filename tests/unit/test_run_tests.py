@@ -55,10 +55,13 @@ def test_build_ci_environment_redirects_runtime_artifacts(tmp_path):
     assert env["EXTRA_FLAG"] == "1"
     assert env["STORAGE__DATA_DIR"] == str(tmp_path / "ci-runtime")
     assert env["STORAGE__SESSIONS_DIR"] == str(tmp_path / "ci-runtime" / "sessions")
+    assert env["STORAGE__SESSION_DB_PATH"] == str(
+        tmp_path / "ci-runtime" / "sessions" / "deepquestiontree.sqlite3"
+    )
     assert env["STORAGE__LOGS_DIR"] == str(tmp_path / "ci-runtime" / "logs")
 
 
-def test_build_backend_test_environment_redirects_only_logs(tmp_path):
+def test_build_backend_test_environment_redirects_sqlite_and_logs(tmp_path):
     env = run_tests.build_backend_test_environment(
         tmp_path / "backend-runtime",
         base_env={"PATH": "test-path"},
@@ -66,7 +69,12 @@ def test_build_backend_test_environment_redirects_only_logs(tmp_path):
 
     assert env["PATH"] == "test-path"
     assert "STORAGE__DATA_DIR" not in env
-    assert "STORAGE__SESSIONS_DIR" not in env
+    assert env["STORAGE__SESSIONS_DIR"] == str(
+        tmp_path / "backend-runtime" / "sessions"
+    )
+    assert env["STORAGE__SESSION_DB_PATH"] == str(
+        tmp_path / "backend-runtime" / "sessions" / "deepquestiontree.sqlite3"
+    )
     assert env["STORAGE__LOGS_DIR"] == str(tmp_path / "backend-runtime" / "logs")
     assert env["COVERAGE_FILE"] == str(tmp_path / "backend-runtime" / ".coverage")
 
@@ -100,11 +108,17 @@ def test_run_ci_checks_uses_isolated_runtime_environment(monkeypatch, tmp_path):
     assert run_tests.run_ci_checks() == 0
     assert len(captured_pytest_envs) == 1
     assert "STORAGE__DATA_DIR" not in captured_pytest_envs[0]
-    assert "STORAGE__SESSIONS_DIR" not in captured_pytest_envs[0]
+    assert captured_pytest_envs[0]["STORAGE__SESSIONS_DIR"].endswith("sessions")
+    assert captured_pytest_envs[0]["STORAGE__SESSION_DB_PATH"].endswith(
+        "sessions\\deepquestiontree.sqlite3"
+    )
     assert captured_pytest_envs[0]["STORAGE__LOGS_DIR"].endswith("logs")
     assert len(captured_frontend_envs) == 1
     assert captured_frontend_envs[0]["STORAGE__DATA_DIR"] != str(tmp_path / "data")
     assert captured_frontend_envs[0]["STORAGE__SESSIONS_DIR"].endswith("sessions")
+    assert captured_frontend_envs[0]["STORAGE__SESSION_DB_PATH"].endswith(
+        "sessions\\deepquestiontree.sqlite3"
+    )
     assert captured_frontend_envs[0]["STORAGE__LOGS_DIR"].endswith("logs")
 
 

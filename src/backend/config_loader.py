@@ -86,6 +86,7 @@ class StorageConfig(BaseModel):
 
     data_dir: str = "data"
     sessions_dir: str = "data/sessions"
+    session_db_path: str = "data/sessions/deepquestiontree.sqlite3"
     logs_dir: str = "data/logs"
 
 
@@ -219,6 +220,7 @@ def _resolve_placeholders(value: Any, variables: Mapping[str, str]) -> Any:
 def _ensure_storage_directories(settings: Settings) -> None:
     Path(settings.storage.data_dir).mkdir(parents=True, exist_ok=True)
     Path(settings.storage.sessions_dir).mkdir(parents=True, exist_ok=True)
+    Path(settings.storage.session_db_path).parent.mkdir(parents=True, exist_ok=True)
     Path(settings.storage.logs_dir).mkdir(parents=True, exist_ok=True)
 
 

@@ -1,6 +1,6 @@
 # User Guide
 
-> Last Updated: 2026-04-05
+> Last Updated: 2026-04-07
 >
 > 本页唯一负责：面向本地使用者说明如何启动并使用 DeepQuestionTree 工作台。
 
@@ -45,6 +45,10 @@ copy .env.example .env
 security:
   api_token: "dev-token"
 ```
+
+默认会话数据库文件位于：
+
+- `data/sessions/deepquestiontree.sqlite3`
 
 ### 2.2 前端配置
 
@@ -130,8 +134,13 @@ npm run dev
 
 选中会话后，顶部操作栏有两个按钮：
 
-- `Generate Report`：直接打开当前会话的 `Exploration Report`。如果尚未缓存，后端会基于当前会话状态生成一次报告快照。
+- `Generate Report`：直接打开当前会话的 `Exploration Report`。如果当前会话版本没有可复用缓存，后端会基于最新会话快照重新生成报告。
 - `Stop & Report`：仅在会话仍处于运行中时可点击。点击后会先停止探索，再打开报告。
+
+补充说明：
+
+- 运行中先看过一次报告后，只要问题树继续推进，旧报告就会自动失效。
+- 旧会话恢复运行后，恢复前生成的报告不会再被当作当前报告直接复用。
 
 报告视图支持三个层面：
 
@@ -157,7 +166,7 @@ npm run dev
 
 1. 系统会弹出确认框。
 2. 确认后会调用删除接口。
-3. 对应 JSON 会话文件会从磁盘移除。
+3. 对应会话和报告缓存会从 SQLite 数据库中移除。
 
 如果删除的是当前选中的会话，主区域会被重置。
 
@@ -165,13 +174,14 @@ npm run dev
 
 默认运行数据目录：
 
-- 会话：`data/sessions`
+- 会话目录：`data/sessions`
+- 会话数据库：`data/sessions/deepquestiontree.sqlite3`
 - 日志：`data/logs`
 
 你通常不需要手动编辑这些文件。常见清理方式：
 
 - 删除单个会话：直接在 UI 中使用 `Delete Session`
-- 清空本地历史：关闭系统后，手动删除 `data/sessions` 下生成的 `.json` 文件
+- 清空本地历史：关闭系统后，删除 `data/sessions/deepquestiontree.sqlite3`
 - 清理日志：关闭系统后，手动删除 `data/logs` 下生成的日志文件
 
 如果目录里有 `.gitkeep`，请保留它。
@@ -198,10 +208,10 @@ npm run dev
 
 先检查：
 
-- 后端是否仍指向同一个 `STORAGE__SESSIONS_DIR`
-- `data/sessions` 下是否仍存在对应 `.json` 文件
+- 后端是否仍指向同一个 `STORAGE__SESSION_DB_PATH`
+- `data/sessions/deepquestiontree.sqlite3` 是否仍存在
 
-系统会在启动时和 API 查询时从会话目录读取历史会话；如果目录被切换到了临时路径，旧历史不会自动出现在当前环境里。
+系统会在启动时和 API 查询时从当前 SQLite 文件读取历史会话；如果数据库路径切换到了临时位置，旧历史不会自动出现在当前环境里。旧版 `data/sessions/*.json` 不会被自动读取。
 
 ### `Stop & Report` 按钮不可点击
 

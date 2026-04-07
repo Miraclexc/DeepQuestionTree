@@ -1,12 +1,15 @@
 """
-持久化模块
-负责会话数据的保存和加载
+SQLite 持久化模块
+负责会话与报告缓存的保存、加载和查询
 """
 
+from __future__ import annotations
+
+import asyncio
 import json
-import shutil
+import sqlite3
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Optional
 
 from ..config_loader import get_settings
 from ..core.schema import SessionData
@@ -14,305 +17,325 @@ from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+SCHEMA_VERSION = 1
+
 
 class SessionManager:
     """
-    会话管理器
-    负责会话的持久化存储和恢复
+    SQLite 会话管理器
+    负责会话和报告缓存的持久化存储与恢复
     """
 
-    def __init__(self):
-        """初始化会话管理器"""
+    def __init__(self, db_path: str | Path | None = None):
         self.settings = get_settings()
-        self.sessions_dir = Path(self.settings.storage.sessions_dir)
-        self.sessions_dir.mkdir(parents=True, exist_ok=True)
+        configured_path = db_path or self.settings.storage.session_db_path
+        self.db_path = Path(configured_path)
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._initialize_database()
 
     async def save_session(self, session: SessionData) -> bool:
-        """
-        保存会话数据
+        return await asyncio.to_thread(self._save_session_sync, session)
 
-        Args:
-            session: 会话数据
-
-        Returns:
-            bool: 是否保存成功
-        """
+    def _save_session_sync(self, session: SessionData) -> bool:
         try:
-            file_path = self.sessions_dir / f"{session.session_id}.json"
-            temp_path = file_path.with_suffix(".tmp")
-
-            # 序列化会话数据
-            session_json = session.model_dump_json(indent=2, ensure_ascii=False)
-
-            # 原子写入：先写临时文件，再重命名
-            with open(temp_path, "w", encoding="utf-8") as f:
-                f.write(session_json)
-
-            # 原子操作重命名
-            temp_path.replace(file_path)
-
-            logger.info(f"会话 {session.session_id} 已保存")
+            session_json = session.model_dump_json(ensure_ascii=False)
+            payload = (
+                session.session_id,
+                session_json,
+                session.global_goal,
+                session.root_node_id,
+                (
+                    session.status.value
+                    if hasattr(session.status, "value")
+                    else str(session.status)
+                ),
+                session.error_message,
+                session.created_at.isoformat(),
+                session.updated_at.isoformat(),
+                session.session_version,
+                session.total_simulations,
+                session.total_tokens_used,
+                session.get_total_nodes(),
+                len(session.global_facts),
+            )
+            with self._connect() as connection:
+                connection.execute(
+                    """
+                    INSERT INTO sessions (
+                        session_id,
+                        session_json,
+                        global_goal,
+                        root_node_id,
+                        status,
+                        error_message,
+                        created_at,
+                        updated_at,
+                        session_version,
+                        total_simulations,
+                        total_tokens_used,
+                        total_nodes,
+                        total_facts
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(session_id) DO UPDATE SET
+                        session_json = excluded.session_json,
+                        global_goal = excluded.global_goal,
+                        root_node_id = excluded.root_node_id,
+                        status = excluded.status,
+                        error_message = excluded.error_message,
+                        created_at = excluded.created_at,
+                        updated_at = excluded.updated_at,
+                        session_version = excluded.session_version,
+                        total_simulations = excluded.total_simulations,
+                        total_tokens_used = excluded.total_tokens_used,
+                        total_nodes = excluded.total_nodes,
+                        total_facts = excluded.total_facts
+                    """,
+                    payload,
+                )
+                connection.commit()
+            logger.info("会话 %s 已保存到 SQLite", session.session_id)
             return True
-
-        except Exception as e:
-            logger.error(f"保存会话失败: {e}")
+        except Exception as exc:  # pragma: no cover - 由上层仓储转换
+            logger.error("保存会话失败: %s", exc)
             return False
 
     async def load_session(self, session_id: str) -> Optional[SessionData]:
-        """
-        加载会话数据
+        return await asyncio.to_thread(self._load_session_sync, session_id)
 
-        Args:
-            session_id: 会话 ID
-
-        Returns:
-            Optional[SessionData]: 会话数据，如果不存在则返回 None
-        """
+    def _load_session_sync(self, session_id: str) -> Optional[SessionData]:
         try:
-            file_path = self.sessions_dir / f"{session_id}.json"
-
-            if not file_path.exists():
-                logger.warning(f"会话文件不存在: {file_path}")
+            with self._connect() as connection:
+                row = connection.execute(
+                    "SELECT session_json FROM sessions WHERE session_id = ?",
+                    (session_id,),
+                ).fetchone()
+            if row is None:
+                logger.warning("会话不存在: %s", session_id)
                 return None
 
-            with open(file_path, "r", encoding="utf-8") as f:
-                session_json = f.read()
-
-            # 反序列化
-            session_data = json.loads(session_json)
-            session = SessionData(**session_data)
-
-            logger.info(f"会话 {session_id} 已加载")
+            session_data = json.loads(row["session_json"])
+            session = SessionData.model_validate(session_data)
+            logger.info("会话 %s 已从 SQLite 加载", session_id)
             return session
-
-        except json.JSONDecodeError as e:
-            logger.error(f"会话文件格式错误: {e}")
+        except json.JSONDecodeError as exc:
+            logger.error("会话 JSON 格式错误: %s", exc)
             return None
-        except Exception as e:
-            logger.error(f"加载会话失败: {e}")
+        except Exception as exc:  # pragma: no cover - 防御性日志
+            logger.error("加载会话失败: %s", exc)
             return None
 
     async def delete_session(self, session_id: str) -> bool:
-        """
-        删除会话
+        return await asyncio.to_thread(self._delete_session_sync, session_id)
 
-        Args:
-            session_id: 会话 ID
-
-        Returns:
-            bool: 是否删除成功
-        """
+    def _delete_session_sync(self, session_id: str) -> bool:
         try:
-            file_path = self.sessions_dir / f"{session_id}.json"
-
-            if file_path.exists():
-                file_path.unlink()
-                logger.info(f"会话 {session_id} 已删除")
-                return True
+            with self._connect() as connection:
+                cursor = connection.execute(
+                    "DELETE FROM sessions WHERE session_id = ?",
+                    (session_id,),
+                )
+                connection.commit()
+            deleted = cursor.rowcount > 0
+            if deleted:
+                logger.info("会话 %s 已删除", session_id)
             else:
-                logger.warning(f"会话文件不存在: {file_path}")
-                return False
-
-        except Exception as e:
-            logger.error(f"删除会话失败: {e}")
+                logger.warning("会话不存在: %s", session_id)
+            return deleted
+        except Exception as exc:  # pragma: no cover - 防御性日志
+            logger.error("删除会话失败: %s", exc)
             return False
 
-    def list_sessions(self) -> List[Dict]:
-        """
-        列出所有会话
-
-        Returns:
-            List[Dict]: 会话信息列表
-        """
-        sessions = []
-
+    def list_sessions(self) -> list[dict[str, Any]]:
         try:
-            for file_path in self.sessions_dir.glob("*.json"):
-                # 排除报告文件
-                if file_path.name.endswith("_report.json"):
-                    continue
+            with self._connect() as connection:
+                rows = connection.execute(
+                    """
+                    SELECT
+                        session_id,
+                        global_goal,
+                        created_at,
+                        updated_at,
+                        status,
+                        total_simulations,
+                        total_nodes,
+                        total_facts,
+                        length(CAST(session_json AS BLOB)) AS file_size
+                    FROM sessions
+                    ORDER BY updated_at DESC
+                    """
+                ).fetchall()
+            return [dict(row) for row in rows]
+        except Exception as exc:  # pragma: no cover - 防御性日志
+            logger.error("列出会话失败: %s", exc)
+            return []
 
-                try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        session_data = json.load(f)
+    async def save_report(
+        self,
+        session_id: str,
+        source_session_version: int,
+        report_data: dict[str, Any],
+    ) -> bool:
+        return await asyncio.to_thread(
+            self._save_report_sync,
+            session_id,
+            source_session_version,
+            report_data,
+        )
 
-                    # 提取基本信息
-                    session_info = {
-                        "session_id": session_data.get("session_id"),
-                        "global_goal": session_data.get("global_goal"),
-                        "created_at": session_data.get("created_at"),
-                        "updated_at": session_data.get("updated_at"),
-                        "status": session_data.get("status"),
-                        "total_simulations": session_data.get("total_simulations", 0),
-                        "total_nodes": len(session_data.get("nodes", {})),
-                        "total_facts": len(session_data.get("global_facts", [])),
-                        "file_size": file_path.stat().st_size,
-                    }
-                    sessions.append(session_info)
-
-                except Exception as e:
-                    logger.error(f"读取会话文件失败 {file_path}: {e}")
-                    continue
-
-            # 按更新时间排序
-            sessions.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
-
-        except Exception as e:
-            logger.error(f"列出会话失败: {e}")
-
-        return sessions
-
-    async def backup_session(self, session_id: str, backup_dir: str) -> bool:
-        """
-        备份会话到指定目录
-
-        Args:
-            session_id: 会话 ID
-            backup_dir: 备份目录
-
-        Returns:
-            bool: 是否备份成功
-        """
+    def _save_report_sync(
+        self,
+        session_id: str,
+        source_session_version: int,
+        report_data: dict[str, Any],
+    ) -> bool:
         try:
-            src_path = self.sessions_dir / f"{session_id}.json"
-            dst_path = Path(backup_dir) / f"{session_id}_backup.json"
-
-            if not src_path.exists():
-                logger.warning(f"源会话文件不存在: {src_path}")
-                return False
-
-            # 创建备份目录
-            dst_path.parent.mkdir(parents=True, exist_ok=True)
-
-            # 复制文件
-            shutil.copy2(src_path, dst_path)
-            logger.info(f"会话 {session_id} 已备份到 {dst_path}")
+            report_json = json.dumps(report_data, ensure_ascii=False)
+            generated_at = str(report_data.get("generated_at") or "")
+            with self._connect() as connection:
+                connection.execute(
+                    """
+                    INSERT INTO reports (
+                        session_id,
+                        source_session_version,
+                        report_json,
+                        generated_at
+                    )
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(session_id) DO UPDATE SET
+                        source_session_version = excluded.source_session_version,
+                        report_json = excluded.report_json,
+                        generated_at = excluded.generated_at
+                    """,
+                    (
+                        session_id,
+                        source_session_version,
+                        report_json,
+                        generated_at,
+                    ),
+                )
+                connection.commit()
+            logger.info(
+                "会话 %s 的报告缓存已保存到 SQLite (version=%s)",
+                session_id,
+                source_session_version,
+            )
             return True
-
-        except Exception as e:
-            logger.error(f"备份会话失败: {e}")
+        except Exception as exc:  # pragma: no cover - 由上层仓储转换
+            logger.error("保存报告失败: %s", exc)
             return False
 
-    def get_session_count(self) -> int:
-        """
-        获取会话总数
+    async def load_report(self, session_id: str) -> dict[str, Any] | None:
+        return await asyncio.to_thread(self._load_report_sync, session_id)
 
-        Returns:
-            int: 会话总数
-        """
+    def _load_report_sync(self, session_id: str) -> dict[str, Any] | None:
         try:
-            return len(list(self.sessions_dir.glob("*.json")))
-        except Exception:
-            return 0
+            with self._connect() as connection:
+                row = connection.execute(
+                    """
+                    SELECT source_session_version, report_json, generated_at
+                    FROM reports
+                    WHERE session_id = ?
+                    """,
+                    (session_id,),
+                ).fetchone()
+            if row is None:
+                return None
+            return {
+                "source_session_version": int(row["source_session_version"]),
+                "generated_at": row["generated_at"],
+                "report": json.loads(row["report_json"]),
+            }
+        except Exception as exc:  # pragma: no cover - 防御性日志
+            logger.error("加载报告失败: %s", exc)
+            return None
 
-    def cleanup_old_sessions(self, days: int = 30) -> int:
-        """
-        清理旧会话
+    async def has_fresh_report(self, session_id: str, session_version: int) -> bool:
+        return await asyncio.to_thread(
+            self._has_fresh_report_sync,
+            session_id,
+            session_version,
+        )
 
-        Args:
-            days: 保留天数
-
-        Returns:
-            int: 清理的会话数量
-        """
-        import time
-
-        cleaned_count = 0
-        cutoff_time = time.time() - (days * 24 * 60 * 60)
-
+    def _has_fresh_report_sync(self, session_id: str, session_version: int) -> bool:
         try:
-            for file_path in self.sessions_dir.glob("*.json"):
-                if file_path.stat().st_mtime < cutoff_time:
-                    file_path.unlink()
-                    cleaned_count += 1
-                    logger.info(f"已清理旧会话: {file_path}")
-
-        except Exception as e:
-            logger.error(f"清理旧会话失败: {e}")
-
-        return cleaned_count
-
-    async def save_report(self, session_id: str, report_data: Dict) -> bool:
-        """保存会话报告（合并到会话文件中）"""
-        try:
-            # 加载会话
-            session = await self.load_session(session_id)
-            if not session:
-                logger.error(f"保存报告失败：会话 {session_id} 不存在")
-                return False
-
-            # 更新报告字段
-            session.report = report_data
-
-            # 保存整个会话
-            return await self.save_session(session)
-
-        except Exception as e:
-            logger.error(f"保存会话报告失败: {e}")
+            with self._connect() as connection:
+                row = connection.execute(
+                    """
+                    SELECT 1
+                    FROM reports
+                    WHERE session_id = ? AND source_session_version = ?
+                    """,
+                    (session_id, session_version),
+                ).fetchone()
+            return row is not None
+        except Exception as exc:  # pragma: no cover - 防御性日志
+            logger.error("检查报告缓存失败: %s", exc)
             return False
 
-    async def load_report(self, session_id: str) -> Optional[Dict]:
-        """加载会话报告"""
-        try:
-            # 1. 尝试从会话中加载
-            session = await self.load_session(session_id)
-            if session and session.report:
-                return session.report
+    def _initialize_database(self) -> None:
+        with self._connect() as connection:
+            current_version = int(
+                connection.execute("PRAGMA user_version").fetchone()[0]
+            )
+            if current_version not in (0, SCHEMA_VERSION):
+                raise RuntimeError(
+                    f"Unsupported SQLite schema version: {current_version}"
+                )
 
-            # 2. 兼容旧版本：尝试加载独立的报告文件
-            legacy_path = self.sessions_dir / f"{session_id}_report.json"
-            if legacy_path.exists():
-                logger.info(f"加载旧版报告文件: {legacy_path}")
-                with open(legacy_path, "r", encoding="utf-8") as f:
-                    return json.load(f)
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS sessions (
+                    session_id TEXT PRIMARY KEY,
+                    session_json TEXT NOT NULL,
+                    global_goal TEXT NOT NULL,
+                    root_node_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    error_message TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    session_version INTEGER NOT NULL,
+                    total_simulations INTEGER NOT NULL,
+                    total_tokens_used INTEGER NOT NULL,
+                    total_nodes INTEGER NOT NULL,
+                    total_facts INTEGER NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS reports (
+                    session_id TEXT PRIMARY KEY,
+                    source_session_version INTEGER NOT NULL,
+                    report_json TEXT NOT NULL,
+                    generated_at TEXT NOT NULL,
+                    FOREIGN KEY (session_id)
+                        REFERENCES sessions(session_id)
+                        ON DELETE CASCADE
+                )
+                """
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_sessions_updated_at ON sessions(updated_at DESC)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_reports_session_version ON reports(session_id, source_session_version)"
+            )
+            connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            connection.commit()
 
-            return None
-        except Exception as e:
-            logger.error(f"加载会话报告失败: {e}")
-            return None
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(self.db_path)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        return connection
 
 
-# 全局会话管理器实例
 _session_manager: Optional[SessionManager] = None
 
 
 def get_session_manager() -> SessionManager:
-    """
-    获取全局会话管理器实例
-
-    Returns:
-        SessionManager: 会话管理器实例
-    """
     global _session_manager
     if _session_manager is None:
         _session_manager = SessionManager()
     return _session_manager
-
-
-# 自动保存装饰器
-def auto_save(interval: int = 5):
-    """
-    自动保存装饰器
-
-    Args:
-        interval: 保存间隔（步数）
-    """
-
-    def decorator(func):
-        async def wrapper(*args, **kwargs):
-            # 执行原函数
-            result = await func(*args, **kwargs)
-
-            # 获取会话实例（假设第一个参数是引擎或包含会话的对象）
-            if args and hasattr(args[0], "session"):
-                session = args[0].session
-
-                # 检查是否需要保存
-                if session.total_simulations % interval == 0:
-                    session_manager = get_session_manager()
-                    await session_manager.save_session(session)
-                    logger.debug(f"自动保存会话 {session.session_id}")
-
-            return result
-
-    return decorator

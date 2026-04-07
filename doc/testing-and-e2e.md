@@ -98,6 +98,12 @@ uv run pytest tests/e2e/test_provider_contracts.py -v --run-e2e --e2e-provider o
 
 如果发现新增或删除运行产物，CI 验收直接失败。
 
+CI 与 pytest 隔离运行时会显式重定向：
+
+- `STORAGE__SESSIONS_DIR`
+- `STORAGE__SESSION_DB_PATH`
+- `STORAGE__LOGS_DIR`
+
 ## 5. Real Provider E2E
 
 ### 5.1 Execution model
@@ -118,7 +124,7 @@ uv run python -m src.backend.main
    - `/api/sessions/{session_id}`
    - `/api/sessions/{session_id}/tree`
    - `/api/sessions/{session_id}/report`
-5. 等待探索完成并校验会话文件是否落盘
+5. 等待探索完成并校验 SQLite 会话库中存在对应会话记录
 
 此外，`tests/e2e/test_provider_contracts.py` 会直接调用真实 provider，验证：
 
@@ -181,8 +187,8 @@ uv run python -m src.backend.main
 通过标准：
 
 - UI 主闭环正常
-- 会话文件写入当前配置的 sessions 目录
-- 删除后文件确实被清理
+- SQLite 会话库写入当前配置的 `STORAGE__SESSION_DB_PATH`
+- 删除后对应 session/report 记录确实被清理
 - 默认 `data/sessions`、`data/logs` 不被测试命令污染
 
 ## 7. Current Boundaries

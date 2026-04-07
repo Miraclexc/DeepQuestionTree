@@ -307,6 +307,7 @@ class MCTSEngine:
             if proposal.simulation_applied:
                 self.session.increment_simulations()
 
+            self.session.bump_session_version()
             self.session.increment_revision()
 
             committed_leaf = self.session.nodes.get(proposal.leaf_node_id)

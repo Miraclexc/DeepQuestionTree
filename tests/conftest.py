@@ -35,6 +35,7 @@ TEST_DEFAULT_ENV = {
     "APP__DEBUG": "true",
     "EMBEDDING__USE_LOCAL": "false",
     "SECURITY__API_TOKEN": "test-token",
+    "STORAGE__SESSION_DB_PATH": "data/sessions/deepquestiontree.sqlite3",
 }
 
 
@@ -102,6 +103,7 @@ def sample_session():
         ),
     )
     session.add_node(root_node)
+    session.bump_session_version()
 
     return session
 
@@ -197,12 +199,14 @@ def isolated_api_runtime(tmp_path, monkeypatch):
     data_dir = tmp_path / "data"
     sessions_dir = data_dir / "sessions"
     logs_dir = data_dir / "logs"
+    session_db_path = sessions_dir / "test.sqlite3"
 
     sessions_dir.mkdir(parents=True)
     logs_dir.mkdir(parents=True)
 
     monkeypatch.setenv("STORAGE__DATA_DIR", str(data_dir))
     monkeypatch.setenv("STORAGE__SESSIONS_DIR", str(sessions_dir))
+    monkeypatch.setenv("STORAGE__SESSION_DB_PATH", str(session_db_path))
     monkeypatch.setenv("STORAGE__LOGS_DIR", str(logs_dir))
     monkeypatch.setenv("APP__MOCK_LLM", "true")
     monkeypatch.setenv("APP__DEBUG", "true")
@@ -222,6 +226,10 @@ def isolated_api_runtime(tmp_path, monkeypatch):
         monkeypatch.setenv(key, value)
     monkeypatch.setenv("STORAGE__DATA_DIR", "data")
     monkeypatch.setenv("STORAGE__SESSIONS_DIR", "data/sessions")
+    monkeypatch.setenv(
+        "STORAGE__SESSION_DB_PATH",
+        "data/sessions/deepquestiontree.sqlite3",
+    )
     monkeypatch.setenv("STORAGE__LOGS_DIR", "data/logs")
     monkeypatch.setenv("MCTS__PARALLEL_WORKERS", "1")
     monkeypatch.setenv("MCTS__MAX_SIMULATIONS", "20")

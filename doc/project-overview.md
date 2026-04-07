@@ -13,7 +13,7 @@ DeepQuestionTree 当前是单用户原型工作台，不是多租户生产系统
 当前稳定边界：
 
 - 单活跃会话
-- 本地 JSON 持久化
+- 本地 SQLite 持久化
 - 前后端同仓库但配置边界分离
 - 无数据库、任务队列、WebSocket 或实时协作
 
@@ -34,7 +34,7 @@ Backend (FastAPI app factory)
    ├─ modules/*
    └─ modules/persistence.py
         ↓
-   data/sessions/*.json
+   data/sessions/deepquestiontree.sqlite3
 ```
 
 ### 2.1 Backend modules
@@ -86,7 +86,7 @@ Backend (FastAPI app factory)
 
 - 新会话启动前，如果已有运行中的会话，会先把旧会话停到 `paused`
 - 活跃会话保留在运行时内存中，便于高频读写
-- 历史会话通过 JSON 仓储恢复
+- 历史会话通过 SQLite 仓储恢复
 
 当前并发模型：
 
@@ -101,14 +101,15 @@ Backend (FastAPI app factory)
 
 持久化分两层：
 
-- `SessionManager` 负责底层 JSON 文件读写与报告缓存
-- `JsonSessionRepository` 负责向上提供显式应用层结果和异常
+- `SessionManager` 负责底层 SQLite 表读写与报告缓存
+- `SqliteSessionRepository` 负责向上提供显式应用层结果和异常
 
 当前仓储接口约束：
 
 - `get_session()`：找不到直接抛 `NotFoundError`
 - `delete_session()`：找不到直接抛 `NotFoundError`
 - `list_sessions()`：返回 `SessionSummaryRecord`
+- 报告缓存只在 `source_session_version == session.session_version` 时命中
 
 ## 4. Configuration Boundary
 
@@ -129,6 +130,11 @@ Backend (FastAPI app factory)
 
 - 后端：`config/settings.yaml`、根 `.env`、进程环境变量
 - 前端：`src/frontend/.env.local`
+
+关键持久化配置：
+
+- `storage.sessions_dir`：SQLite 文件所在目录
+- `storage.session_db_path`：默认 `data/sessions/deepquestiontree.sqlite3`
 
 ### 4.1 LLM structured-output boundary
 
@@ -186,7 +192,7 @@ Backend (FastAPI app factory)
 
 - 不支持多用户并发探索
 - 单活跃 session 内已改为“两阶段提交 + 串行 commit”，但并发 prepare 在 revision 变化后仍可能被丢弃重试
-- 不引入数据库
+- 不引入外部数据库服务
 - 不引入实时推送
 - 仍然采用轮询式工作台
 - `config/settings.yaml` 中的默认模型值仍需结合实际部署环境审查

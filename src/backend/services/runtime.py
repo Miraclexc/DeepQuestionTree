@@ -17,7 +17,7 @@ from .module_factory import RuntimeModuleFactory
 from .report_service import ReportService
 from .session_command_service import SessionCommandService
 from .session_query_service import SessionQueryService
-from .session_repository import JsonSessionRepository, SessionRepository
+from .session_repository import SessionRepository, SqliteSessionRepository
 
 
 class ExplorationRuntime:
@@ -28,7 +28,7 @@ class ExplorationRuntime:
         repository: SessionRepository | None = None,
         module_factory: RuntimeModuleFactory | None = None,
     ) -> None:
-        self.repository = repository or JsonSessionRepository()
+        self.repository = repository or SqliteSessionRepository()
         self.module_factory = module_factory or RuntimeModuleFactory()
         self.coordinator = RuntimeCoordinator(self.repository)
         self.command_service = SessionCommandService(

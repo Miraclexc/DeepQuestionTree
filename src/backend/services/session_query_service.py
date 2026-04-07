@@ -55,12 +55,17 @@ class SessionQueryService:
 
     async def get_session(self, session_id: str) -> SessionReadModel:
         session = await self._load_session_for_read(session_id)
+        report_available = await self._repository.has_fresh_report(
+            session_id,
+            session.session_version,
+        )
         return build_session_read_model(
             session,
             is_active=(
                 self._coordinator.active_session is not None
                 and self._coordinator.active_session.session_id == session_id
             ),
+            report_available=report_available,
         )
 
     async def get_tree(self, session_id: str) -> TreeResponse:

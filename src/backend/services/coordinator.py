@@ -150,6 +150,7 @@ class RuntimeCoordinator:
         finally:
             if session.status == SessionStatus.RUNNING:
                 session.status = SessionStatus.COMPLETED
+                session.bump_session_version()
 
             await self._repository.save_session(session)
 
@@ -222,6 +223,7 @@ class RuntimeCoordinator:
 
         if session is not None and session.status == SessionStatus.RUNNING:
             session.status = status
+            session.bump_session_version()
             await self._repository.save_session(session)
 
         if task is not None:

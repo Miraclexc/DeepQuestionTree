@@ -30,14 +30,22 @@ class ReportService:
         self._query_service = SessionQueryService(repository, coordinator)
 
     async def get_report(self, session_id: str) -> ReportResponse:
-        session = await self._query_service.load_session(session_id)
-        cached_report = await self._repository.load_report(session_id)
-        if cached_report is not None:
-            return build_report_response(session, cached_report)
+        live_session = await self._query_service.load_session(session_id)
+        snapshot = live_session.model_copy(deep=True)
+        if await self._repository.has_fresh_report(
+            session_id,
+            snapshot.session_version,
+        ):
+            cached_report = await self._repository.load_report(session_id)
+            if (
+                cached_report is not None
+                and cached_report.source_session_version == snapshot.session_version
+            ):
+                return build_report_response(snapshot, cached_report.report)
 
         try:
-            raw_report = await self._generate_report_payload(session_id, session)
-            normalized = build_report_response(session, raw_report)
+            raw_report = await self._generate_report_payload(session_id, snapshot)
+            normalized = build_report_response(snapshot, raw_report)
         except ReportGenerationError as exc:
             logger.warning(
                 "报告生成失败，返回稳定 DTO: session_id=%s detail=%s",
@@ -45,19 +53,22 @@ class ReportService:
                 exc.detail,
             )
             normalized = build_report_response(
-                session,
+                snapshot,
                 {
-                    "session_id": session.session_id,
-                    "goal": session.global_goal,
+                    "session_id": snapshot.session_id,
+                    "goal": snapshot.global_goal,
                     "generated_at": datetime.now(UTC).isoformat(),
                     "error_message": exc.detail,
                 },
             )
 
-        await self._repository.save_report(
-            session_id,
-            normalized.model_dump(mode="json"),
-        )
+        current_session = await self._query_service.load_session(session_id)
+        if current_session.session_version == snapshot.session_version:
+            await self._repository.save_report(
+                session_id,
+                snapshot.session_version,
+                normalized.model_dump(mode="json"),
+            )
         return normalized
 
     def _resolve_integrator(self, session_id: str):

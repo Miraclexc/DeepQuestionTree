@@ -123,6 +123,7 @@ def test_load_settings_environment_overrides_dotenv_and_yaml(monkeypatch, tmp_pa
             storage:
               data_dir: yaml-data
               sessions_dir: yaml-data/sessions
+              session_db_path: yaml-data/sessions/yaml.sqlite3
               logs_dir: yaml-data/logs
             """
         ).strip(),
@@ -158,6 +159,10 @@ def test_load_settings_environment_overrides_dotenv_and_yaml(monkeypatch, tmp_pa
         "STORAGE__LOGS_DIR",
         str(tmp_path / "runtime-data" / "logs"),
     )
+    monkeypatch.setenv(
+        "STORAGE__SESSION_DB_PATH",
+        str(tmp_path / "runtime-data" / "sessions" / "runtime.sqlite3"),
+    )
 
     settings = load_settings("config/settings.yaml")
 
@@ -171,16 +176,24 @@ def test_load_settings_environment_overrides_dotenv_and_yaml(monkeypatch, tmp_pa
     assert settings.embedding.fallback_mode == "hash"
     assert settings.storage.data_dir == str(tmp_path / "runtime-data")
     assert settings.storage.sessions_dir == str(tmp_path / "runtime-data" / "sessions")
+    assert settings.storage.session_db_path == str(
+        tmp_path / "runtime-data" / "sessions" / "runtime.sqlite3"
+    )
     assert settings.storage.logs_dir == str(tmp_path / "runtime-data" / "logs")
 
 
 def test_load_settings_uses_defaults_when_config_file_is_missing(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("STORAGE__DATA_DIR", raising=False)
+    monkeypatch.delenv("STORAGE__SESSIONS_DIR", raising=False)
+    monkeypatch.delenv("STORAGE__SESSION_DB_PATH", raising=False)
+    monkeypatch.delenv("STORAGE__LOGS_DIR", raising=False)
 
     settings = load_settings("config/settings.yaml")
 
     assert settings.app.api_port == 8001
     assert settings.storage.sessions_dir == "data/sessions"
+    assert settings.storage.session_db_path == "data/sessions/deepquestiontree.sqlite3"
 
 
 def test_session_manager_uses_environment_overridden_storage_paths(
@@ -194,6 +207,7 @@ def test_session_manager_uses_environment_overridden_storage_paths(
             storage:
               data_dir: data
               sessions_dir: data/sessions
+              session_db_path: data/sessions/deepquestiontree.sqlite3
               logs_dir: data/logs
             """
         ).strip(),
@@ -201,10 +215,12 @@ def test_session_manager_uses_environment_overridden_storage_paths(
     )
 
     expected_sessions_dir = tmp_path / "isolated-data" / "sessions"
+    expected_db_path = expected_sessions_dir / "isolated.sqlite3"
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("STORAGE__DATA_DIR", str(tmp_path / "isolated-data"))
     monkeypatch.setenv("STORAGE__SESSIONS_DIR", str(expected_sessions_dir))
+    monkeypatch.setenv("STORAGE__SESSION_DB_PATH", str(expected_db_path))
     monkeypatch.setenv(
         "STORAGE__LOGS_DIR",
         str(tmp_path / "isolated-data" / "logs"),
@@ -215,6 +231,6 @@ def test_session_manager_uses_environment_overridden_storage_paths(
     manager = persistence_module.get_session_manager()
 
     try:
-        assert Path(manager.sessions_dir) == expected_sessions_dir
+        assert Path(manager.db_path) == expected_db_path
     finally:
         persistence_module._session_manager = None

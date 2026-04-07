@@ -41,6 +41,7 @@ class SessionCommandService:
 
         if session_id:
             session = await self._repository.get_session(session_id)
+            session.bump_session_version()
             session.status = SessionStatus.RUNNING
             logger.info("恢复会话: %s", session_id)
         else:
@@ -101,7 +102,6 @@ class SessionCommandService:
             status=SessionStatus.RUNNING,
             mcts_config=get_settings().mcts.model_dump(),
             error_message=None,
-            report=None,
         )
         root_node = Node(
             id=session.root_node_id,
@@ -116,4 +116,5 @@ class SessionCommandService:
             ),
         )
         session.add_node(root_node)
+        session.bump_session_version()
         return session

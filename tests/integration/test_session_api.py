@@ -2,7 +2,6 @@ import pytest
 
 import src.backend.main as main_module
 from src.backend.core.schema import Node, QAInteraction, SessionData
-from src.backend.modules.persistence import get_session_manager
 
 
 @pytest.mark.integration
@@ -78,9 +77,10 @@ class TestSessionScopedAPI:
             ),
         )
         session.add_node(root_node)
+        session.bump_session_version()
 
-        manager = get_session_manager()
-        await manager.save_session(session)
+        repository = main_module.app.state.runtime.repository
+        await repository.save_session(session)
 
         response = await api_client.get(
             f"/api/sessions/{session.session_id}/nodes/{root_node.id}"
@@ -90,6 +90,5 @@ class TestSessionScopedAPI:
         data = response.json()
         assert data["interaction"]["answer"] == "结构化回答"
 
-        reloaded = await manager.load_session(session.session_id)
-        assert reloaded is not None
+        reloaded = await repository.get_session(session.session_id)
         assert reloaded.nodes[root_node.id].interaction.answer == raw_answer

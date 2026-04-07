@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -31,6 +32,7 @@ class FakeRepository:
     async def delete_session(self, session_id: str) -> None:
         if self.sessions.pop(session_id, None) is None:
             raise NotFoundError(f"Session {session_id} not found")
+        self.reports.pop(session_id, None)
 
     def list_sessions(self) -> list[SessionSummaryRecord]:
         return [
@@ -48,11 +50,25 @@ class FakeRepository:
             for session in self.sessions.values()
         ]
 
-    async def save_report(self, session_id: str, report: dict) -> None:
-        self.reports[session_id] = report
+    async def save_report(
+        self, session_id: str, source_session_version: int, report: dict
+    ) -> None:
+        self.reports[session_id] = {
+            "source_session_version": source_session_version,
+            "report": report,
+        }
 
     async def load_report(self, session_id: str) -> dict | None:
-        return self.reports.get(session_id)
+        record = self.reports.get(session_id)
+        if record is None:
+            return None
+        return SimpleNamespace(**record)
+
+    async def has_fresh_report(self, session_id: str, session_version: int) -> bool:
+        record = self.reports.get(session_id)
+        if record is None:
+            return False
+        return record["source_session_version"] == session_version
 
 
 class FakeCoordinator:
@@ -121,6 +137,8 @@ class FakeIntegrator:
         self, session: SessionData, max_facts: int = 50
     ) -> dict:
         self.calls += 1
+        if callable(self.payload):
+            return self.payload(session, self.calls)
         return self.payload
 
 
@@ -163,6 +181,7 @@ class TestSessionCommandService:
         assert coordinator.stopped_with == SessionStatus.PAUSED
         assert coordinator.activated_session is not None
         assert repository.sessions[response.session_id].global_goal == "新会话"
+        assert repository.sessions[response.session_id].session_version == 1
 
     async def test_restore_missing_session_raises_not_found(self):
         service = SessionCommandService(
@@ -177,6 +196,35 @@ class TestSessionCommandService:
                 use_mock=False,
                 session_id="missing-session",
             )
+
+    async def test_restore_session_bumps_session_version(self):
+        session = SessionData(global_goal="旧会话", status=SessionStatus.PAUSED)
+        session.add_node(
+            Node(
+                id=session.root_node_id,
+                depth=0,
+                interaction=QAInteraction(question="旧会话", answer="探索起点"),
+            )
+        )
+        session.session_version = 2
+        repository = FakeRepository(
+            sessions={session.session_id: session},
+            reports={},
+        )
+        service = SessionCommandService(
+            repository,
+            FakeCoordinator(),
+            FakeModuleFactory(),
+        )
+
+        response = await service.start_session(
+            goal="恢复旧会话",
+            use_mock=False,
+            session_id=session.session_id,
+        )
+
+        assert response.session_id == session.session_id
+        assert repository.sessions[session.session_id].session_version == 3
 
 
 @pytest.mark.unit
@@ -240,7 +288,7 @@ class TestReportService:
         assert report.llm_stats.usage_by_model == {}
         assert report.key_insights == []
         assert (
-            repository.reports[session.session_id]["error_message"]
+            repository.reports[session.session_id]["report"]["error_message"]
             == "report generation failed"
         )
 
@@ -267,7 +315,152 @@ class TestReportService:
         assert report.error_message == "llm exploded"
         assert report.statistics.total_nodes == 1
         assert report.suggestions == []
-        assert repository.reports[session.session_id]["error_message"] == "llm exploded"
+        assert (
+            repository.reports[session.session_id]["report"]["error_message"]
+            == "llm exploded"
+        )
+
+    async def test_report_service_uses_cached_report_for_same_session_version(self):
+        session = SessionData(global_goal="缓存命中")
+        session.add_node(
+            Node(
+                id=session.root_node_id,
+                depth=0,
+                interaction=QAInteraction(question="root", answer="answer"),
+            )
+        )
+        session.session_version = 4
+        cached_generated_at = datetime.now(UTC).isoformat()
+        repository = FakeRepository(
+            sessions={session.session_id: session},
+            reports={
+                session.session_id: {
+                    "source_session_version": 4,
+                    "report": {
+                        "session_id": session.session_id,
+                        "goal": session.global_goal,
+                        "executive_summary": "cached",
+                        "generated_at": cached_generated_at,
+                    },
+                }
+            },
+        )
+        integrator = FakeIntegrator(
+            {
+                "session_id": session.session_id,
+                "goal": session.global_goal,
+                "executive_summary": "fresh",
+                "generated_at": datetime.now(UTC).isoformat(),
+            }
+        )
+        service = ReportService(
+            repository,
+            FakeCoordinator(active_session=session),
+            FakeModuleFactory(integrator=integrator),
+        )
+
+        report = await service.get_report(session.session_id)
+
+        assert report.executive_summary == "cached"
+        assert report.generated_at == cached_generated_at
+        assert integrator.calls == 0
+
+    async def test_report_service_regenerates_when_session_version_changes(self):
+        session = SessionData(global_goal="缓存失效")
+        session.add_node(
+            Node(
+                id=session.root_node_id,
+                depth=0,
+                interaction=QAInteraction(question="root", answer="answer"),
+            )
+        )
+        session.session_version = 5
+        repository = FakeRepository(
+            sessions={session.session_id: session},
+            reports={
+                session.session_id: {
+                    "source_session_version": 4,
+                    "report": {
+                        "session_id": session.session_id,
+                        "goal": session.global_goal,
+                        "executive_summary": "stale",
+                        "generated_at": "2026-04-01T00:00:00+00:00",
+                    },
+                }
+            },
+        )
+        integrator = FakeIntegrator(
+            lambda snapshot, call_count: {
+                "session_id": snapshot.session_id,
+                "goal": snapshot.global_goal,
+                "executive_summary": f"fresh-{call_count}",
+                "statistics": {
+                    "total_simulations": snapshot.total_simulations,
+                    "total_nodes": snapshot.get_total_nodes(),
+                    "tree_depth": snapshot.get_tree_depth(),
+                    "total_facts": len(snapshot.global_facts),
+                    "active_nodes": len(snapshot.get_active_nodes()),
+                    "pruned_nodes": 0,
+                },
+                "generated_at": datetime.now(UTC).isoformat(),
+            }
+        )
+        service = ReportService(
+            repository,
+            FakeCoordinator(active_session=session),
+            FakeModuleFactory(integrator=integrator),
+        )
+
+        report = await service.get_report(session.session_id)
+
+        assert report.executive_summary == "fresh-1"
+        assert repository.reports[session.session_id]["source_session_version"] == 5
+        assert integrator.calls == 1
+
+    async def test_report_service_does_not_cache_when_session_changes_during_generation(
+        self,
+    ):
+        session = SessionData(global_goal="并发变化")
+        session.add_node(
+            Node(
+                id=session.root_node_id,
+                depth=0,
+                interaction=QAInteraction(question="root", answer="answer"),
+            )
+        )
+        session.session_version = 2
+        repository = FakeRepository(
+            sessions={session.session_id: session},
+            reports={},
+        )
+
+        def payload(snapshot: SessionData, _: int) -> dict:
+            session.session_version += 1
+            session.total_simulations += 1
+            return {
+                "session_id": snapshot.session_id,
+                "goal": snapshot.global_goal,
+                "statistics": {
+                    "total_simulations": snapshot.total_simulations,
+                    "total_nodes": snapshot.get_total_nodes(),
+                    "tree_depth": snapshot.get_tree_depth(),
+                    "total_facts": len(snapshot.global_facts),
+                    "active_nodes": len(snapshot.get_active_nodes()),
+                    "pruned_nodes": 0,
+                },
+                "generated_at": datetime.now(UTC).isoformat(),
+            }
+
+        service = ReportService(
+            repository,
+            FakeCoordinator(active_session=session),
+            FakeModuleFactory(integrator=FakeIntegrator(payload)),
+        )
+
+        report = await service.get_report(session.session_id)
+
+        assert report.session_id == session.session_id
+        assert session.session_id not in repository.reports
 
 
 @pytest.mark.unit

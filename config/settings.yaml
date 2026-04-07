@@ -30,6 +30,7 @@ embedding:
 storage:
   data_dir: "data"
   sessions_dir: "data/sessions"
+  session_db_path: "data/sessions/deepquestiontree.sqlite3"
   logs_dir: "data/logs"
 
 logging:

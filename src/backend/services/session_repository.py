@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Mapping, Protocol
 
 from ..core.schema import SessionData
@@ -59,6 +60,37 @@ class SessionSummaryRecord:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class StoredReportRecord:
+    session_id: str
+    source_session_version: int
+    generated_at: str
+    report: dict[str, Any]
+
+    @classmethod
+    def from_payload(
+        cls,
+        session_id: str,
+        payload: Mapping[str, Any],
+    ) -> StoredReportRecord:
+        report_payload = payload.get("report")
+        if not isinstance(report_payload, Mapping):
+            raise ContractError(
+                "Stored report payload is invalid",
+                status_code=500,
+            )
+
+        return cls(
+            session_id=session_id,
+            source_session_version=_require_int(
+                payload.get("source_session_version"),
+                "source_session_version",
+            ),
+            generated_at=_require_str(payload, "generated_at"),
+            report=dict(report_payload),
+        )
+
+
 class SessionRepository(Protocol):
     async def save_session(self, session: SessionData) -> None: ...
 
@@ -68,16 +100,33 @@ class SessionRepository(Protocol):
 
     def list_sessions(self) -> list[SessionSummaryRecord]: ...
 
-    async def save_report(self, session_id: str, report: dict[str, Any]) -> None: ...
+    async def save_report(
+        self,
+        session_id: str,
+        source_session_version: int,
+        report: dict[str, Any],
+    ) -> None: ...
 
-    async def load_report(self, session_id: str) -> dict[str, Any] | None: ...
+    async def load_report(self, session_id: str) -> StoredReportRecord | None: ...
+
+    async def has_fresh_report(self, session_id: str, session_version: int) -> bool: ...
 
 
-class JsonSessionRepository:
-    """基于本地 JSON 文件的仓储实现。"""
+class SqliteSessionRepository:
+    """基于 SQLite 的仓储实现。"""
 
-    def __init__(self, manager: SessionManager | None = None) -> None:
-        self._manager = manager or get_session_manager()
+    def __init__(
+        self,
+        manager: SessionManager | None = None,
+        *,
+        db_path: str | Path | None = None,
+    ) -> None:
+        if manager is not None:
+            self._manager = manager
+        elif db_path is not None:
+            self._manager = SessionManager(db_path=db_path)
+        else:
+            self._manager = get_session_manager()
 
     async def save_session(self, session: SessionData) -> None:
         saved = await self._manager.save_session(session)
@@ -101,13 +150,28 @@ class JsonSessionRepository:
             for session in self._manager.list_sessions()
         ]
 
-    async def save_report(self, session_id: str, report: dict[str, Any]) -> None:
-        saved = await self._manager.save_report(session_id, report)
+    async def save_report(
+        self,
+        session_id: str,
+        source_session_version: int,
+        report: dict[str, Any],
+    ) -> None:
+        saved = await self._manager.save_report(
+            session_id,
+            source_session_version,
+            report,
+        )
         if not saved:
             raise PersistenceError(f"保存报告失败: {session_id}")
 
-    async def load_report(self, session_id: str) -> dict[str, Any] | None:
-        return await self._manager.load_report(session_id)
+    async def load_report(self, session_id: str) -> StoredReportRecord | None:
+        payload = await self._manager.load_report(session_id)
+        if payload is None:
+            return None
+        return StoredReportRecord.from_payload(session_id, payload)
+
+    async def has_fresh_report(self, session_id: str, session_version: int) -> bool:
+        return await self._manager.has_fresh_report(session_id, session_version)
 
 
 def _require_str(payload: Mapping[str, Any], key: str) -> str:

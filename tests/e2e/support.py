@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import socket
+import sqlite3
 import subprocess
 import time
 from contextlib import asynccontextmanager
@@ -97,6 +98,7 @@ def build_backend_environment(
     data_dir: Path,
 ) -> dict[str, str]:
     sessions_dir = data_dir / "sessions"
+    session_db_path = sessions_dir / "deepquestiontree.sqlite3"
     logs_dir = data_dir / "logs"
     sessions_dir.mkdir(parents=True, exist_ok=True)
     logs_dir.mkdir(parents=True, exist_ok=True)
@@ -116,6 +118,7 @@ def build_backend_environment(
             "LLM__DECISION_MODEL": profile.decision_model,
             "STORAGE__DATA_DIR": str(data_dir),
             "STORAGE__SESSIONS_DIR": str(sessions_dir),
+            "STORAGE__SESSION_DB_PATH": str(session_db_path),
             "STORAGE__LOGS_DIR": str(logs_dir),
             "MCTS__PARALLEL_WORKERS": "1",
             "MCTS__MAX_SIMULATIONS": str(profile.max_simulations),
@@ -155,6 +158,7 @@ class ManagedE2EServer:
         self._output_handle = output_handle
         self.base_url = f"http://127.0.0.1:{port}"
         self.sessions_dir = data_dir / "sessions"
+        self.session_db_path = self.sessions_dir / "deepquestiontree.sqlite3"
 
     @classmethod
     def start(
@@ -239,6 +243,16 @@ class ManagedE2EServer:
 
     def session_file(self, session_id: str) -> Path:
         return self.sessions_dir / f"{session_id}.json"
+
+    def has_session_row(self, session_id: str) -> bool:
+        if not self.session_db_path.exists():
+            return False
+        with sqlite3.connect(self.session_db_path) as connection:
+            row = connection.execute(
+                "SELECT 1 FROM sessions WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+        return row is not None
 
     def read_output_tail(self, max_lines: int = 60) -> str:
         try:

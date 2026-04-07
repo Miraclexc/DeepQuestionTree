@@ -187,6 +187,7 @@ class SessionData(BaseModel):
     total_simulations: int = Field(default=0, ge=0, description="总模拟次数")
     total_tokens_used: int = Field(default=0, ge=0, description="总Token消耗")
     session_revision: int = Field(default=0, ge=0, description="会话提交版本")
+    session_version: int = Field(default=0, ge=0, description="报告缓存版本")
 
     # 时间戳
     created_at: datetime = Field(
@@ -202,9 +203,6 @@ class SessionData(BaseModel):
 
     # 配置快照
     mcts_config: Optional[Dict] = Field(None, description="MCTS配置快照")
-
-    # 报告数据
-    report: Optional[Dict] = Field(None, description="生成的完整报告与统计")
 
     def get_node(self, node_id: str) -> Optional[Node]:
         """安全获取节点"""
@@ -228,6 +226,11 @@ class SessionData(BaseModel):
     def increment_revision(self) -> None:
         """递增会话提交版本"""
         self.session_revision += 1
+        self.updated_at = datetime.now()
+
+    def bump_session_version(self) -> None:
+        """递增报告缓存版本。"""
+        self.session_version += 1
         self.updated_at = datetime.now()
 
     def get_tree_depth(self) -> int:

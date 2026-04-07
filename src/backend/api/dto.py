@@ -213,6 +213,7 @@ def build_session_read_model(
     session: SessionData,
     *,
     is_active: bool,
+    report_available: bool,
 ) -> SessionReadModel:
     return SessionReadModel(
         session_id=session.session_id,
@@ -230,7 +231,7 @@ def build_session_read_model(
         error_message=session.error_message,
         total_nodes=session.get_total_nodes(),
         total_facts=len(session.global_facts),
-        report_available=session.report is not None,
+        report_available=report_available,
         is_active=is_active,
     )
 

@@ -90,6 +90,7 @@ npm run dev
 默认运行产物目录：
 
 - `data/sessions`
+- `data/sessions/deepquestiontree.sqlite3`
 - `data/logs`
 
 提交代码前不要把新的运行产物带入版本库。
@@ -109,6 +110,8 @@ npm run dev
 - 前端只读取自己的 `NEXT_PUBLIC_*` 环境变量
 - Bearer Token 后端来源是 `security.api_token` 或 `SECURITY__API_TOKEN`
 - 浏览器端优先使用 `localStorage["dqt.apiToken"]`
+- 会话和报告缓存统一落在 `storage.session_db_path`
+- 默认 SQLite 文件路径是 `data/sessions/deepquestiontree.sqlite3`
 
 ## 5. Change Synchronization Points
 

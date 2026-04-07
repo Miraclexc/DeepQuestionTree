@@ -1,6 +1,6 @@
 # Application Layer And Auth
 
-> Last Updated: 2026-04-05
+> Last Updated: 2026-04-07
 >
 > 本页唯一负责：作为统一 API、鉴权规则、错误响应与 read-model 契约的单一事实来源。
 
@@ -17,7 +17,7 @@
 | DTO / contract | read-model 与报告契约归一化 | `src/backend/api/dto.py` |
 | Command service | 启动、停止、删除会话 | `src/backend/services/session_command_service.py` |
 | Query service | 状态、会话、树、节点查询 | `src/backend/services/session_query_service.py` |
-| Report service | 报告缓存读取、生成与稳定输出 | `src/backend/services/report_service.py` |
+| Report service | 基于会话版本做缓存判定、报告生成与稳定输出 | `src/backend/services/report_service.py` |
 | Configuration service | 配置重载与模块重建 | `src/backend/services/configuration_service.py` |
 | Runtime coordinator | 活跃会话、MCTS engine、后台任务生命周期 | `src/backend/services/coordinator.py` |
 | Runtime facade | 挂到 FastAPI `app.state` 的统一门面 | `src/backend/services/runtime.py` |
@@ -131,6 +131,14 @@ localStorage.setItem("dqt.apiToken", "dev-token");
 - `error_message`
 
 旧缓存或失败载荷都会通过 `build_report_response()` 归一化。
+
+当前报告 freshness 语义：
+
+- `GET /api/sessions/{session_id}/report` 会先拍当前会话快照，再判断是否存在同版本缓存
+- 只有当缓存的 `source_session_version` 等于当前 `session.session_version` 时才会直接返回缓存
+- 如果会话在报告生成期间继续推进，本次响应仍可返回，但不会覆盖最新版本的缓存
+
+`SessionReadModel.report_available` 当前表示“该会话当前版本存在可复用报告”，不再表示“历史上生成过某份报告”。
 
 ## 6. Frontend Request Layer
 

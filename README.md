@@ -1,6 +1,6 @@
 # DeepQuestionTree
 
-> Last Updated: 2026-04-05
+> Last Updated: 2026-04-07
 >
 > 本页唯一负责：作为项目入口页，提供最短启动路径，并把用户与开发者分流到各自文档。
 
@@ -38,6 +38,10 @@ copy .env.example .env
 ```text
 代码默认值 < config/settings.yaml < 根目录 .env < 进程环境变量
 ```
+
+默认会话与报告持久化文件为：
+
+- `data/sessions/deepquestiontree.sqlite3`
 
 前端公开配置放在 `src/frontend/.env.local`，常用变量如下：
 

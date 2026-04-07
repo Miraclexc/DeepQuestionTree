@@ -84,6 +84,7 @@ def build_ci_environment(
 ) -> dict[str, str]:
     env = dict(os.environ if base_env is None else base_env)
     sessions_dir = runtime_root / "sessions"
+    session_db_path = sessions_dir / "deepquestiontree.sqlite3"
     logs_dir = runtime_root / "logs"
 
     runtime_root.mkdir(parents=True, exist_ok=True)
@@ -92,6 +93,7 @@ def build_ci_environment(
 
     env["STORAGE__DATA_DIR"] = str(runtime_root)
     env["STORAGE__SESSIONS_DIR"] = str(sessions_dir)
+    env["STORAGE__SESSION_DB_PATH"] = str(session_db_path)
     env["STORAGE__LOGS_DIR"] = str(logs_dir)
     env["COVERAGE_FILE"] = str(runtime_root / ".coverage")
 
@@ -103,11 +105,16 @@ def build_backend_test_environment(
     base_env: dict[str, str] | None = None,
 ) -> dict[str, str]:
     env = dict(os.environ if base_env is None else base_env)
+    sessions_dir = runtime_root / "sessions"
+    session_db_path = sessions_dir / "deepquestiontree.sqlite3"
     logs_dir = runtime_root / "logs"
 
     runtime_root.mkdir(parents=True, exist_ok=True)
+    sessions_dir.mkdir(parents=True, exist_ok=True)
     logs_dir.mkdir(parents=True, exist_ok=True)
 
+    env["STORAGE__SESSIONS_DIR"] = str(sessions_dir)
+    env["STORAGE__SESSION_DB_PATH"] = str(session_db_path)
     env["STORAGE__LOGS_DIR"] = str(logs_dir)
     env["COVERAGE_FILE"] = str(runtime_root / ".coverage")
 
