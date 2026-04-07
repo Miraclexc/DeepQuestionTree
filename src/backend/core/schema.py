@@ -75,9 +75,17 @@ class Node(BaseModel):
     is_terminal: bool = Field(default=False, description="是否为终止节点（不可再分）")
     is_pruned: bool = Field(default=False, description="是否已被剪枝")
     is_processing: bool = Field(
-        default=False, description="是否正在被处理（并行计算中）"
+        default=False,
+        description="是否正在被处理（并行计算中）",
+        exclude=True,
+    )
+    processing_token: Optional[str] = Field(
+        default=None,
+        description="当前处理占用令牌（内部并发控制）",
+        exclude=True,
     )
     prune_reason: Optional[str] = Field(None, description="剪枝原因")
+    node_revision: int = Field(default=0, ge=0, description="节点提交版本")
 
     created_at: datetime = Field(
         default_factory=datetime.now, description="节点创建时间"
@@ -111,12 +119,41 @@ class Node(BaseModel):
         """添加子节点"""
         if child_id not in self.children_ids:
             self.children_ids.append(child_id)
-            self.updated_at = datetime.now()
+            self.touch(bump_revision=True)
 
     def mark_pruned(self, reason: str) -> None:
         """标记节点为已剪枝"""
         self.is_pruned = True
         self.prune_reason = reason
+        self.touch(bump_revision=True)
+
+    def mark_terminal(self) -> None:
+        """标记节点为终止节点"""
+        self.is_terminal = True
+        self.touch(bump_revision=True)
+
+    def reserve_processing(self, token: str) -> None:
+        """占用节点处理权"""
+        self.is_processing = True
+        self.processing_token = token
+        self.touch()
+
+    def release_processing(self, token: Optional[str] = None) -> bool:
+        """释放节点处理权"""
+        if token is not None and self.processing_token not in (None, token):
+            return False
+
+        changed = self.is_processing or self.processing_token is not None
+        self.is_processing = False
+        self.processing_token = None
+        if changed:
+            self.touch()
+        return changed
+
+    def touch(self, *, bump_revision: bool = False) -> None:
+        """更新节点时间戳，可选递增提交版本"""
+        if bump_revision:
+            self.node_revision += 1
         self.updated_at = datetime.now()
 
 
@@ -149,6 +186,7 @@ class SessionData(BaseModel):
     # 运行统计
     total_simulations: int = Field(default=0, ge=0, description="总模拟次数")
     total_tokens_used: int = Field(default=0, ge=0, description="总Token消耗")
+    session_revision: int = Field(default=0, ge=0, description="会话提交版本")
 
     # 时间戳
     created_at: datetime = Field(
@@ -187,6 +225,11 @@ class SessionData(BaseModel):
         self.total_simulations += 1
         self.updated_at = datetime.now()
 
+    def increment_revision(self) -> None:
+        """递增会话提交版本"""
+        self.session_revision += 1
+        self.updated_at = datetime.now()
+
     def get_tree_depth(self) -> int:
         """获取树的最大深度"""
         if not self.nodes:
@@ -196,6 +239,14 @@ class SessionData(BaseModel):
     def get_total_nodes(self) -> int:
         """获取节点总数"""
         return len(self.nodes)
+
+    def get_pending_reservations(self) -> int:
+        """获取当前待提交的保留数量"""
+        return sum(
+            1
+            for node in self.nodes.values()
+            if node.is_processing and node.processing_token is not None
+        )
 
     def get_active_nodes(self) -> List[Node]:
         """获取所有活跃节点（未被剪枝且非终止）"""

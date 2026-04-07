@@ -1,6 +1,6 @@
 # Developer Guide
 
-> Last Updated: 2026-04-05
+> Last Updated: 2026-04-07
 >
 > 本页唯一负责：面向开发者说明环境基线、目录职责、调试入口、变更同步点和文档维护规则。
 
@@ -69,8 +69,8 @@ npm run dev
 | Path | Responsibility |
 |---|---|
 | `src/backend/api/` | 路由、DTO、鉴权依赖 |
-| `src/backend/services/` | 运行时门面、应用服务、协调器、仓储边界 |
-| `src/backend/core/` | 领域对象与 MCTS engine |
+| `src/backend/services/` | 运行时门面、应用服务、协调器、串行 commit 通道、仓储边界 |
+| `src/backend/core/` | 领域对象、MCTS engine、snapshot/proposal 并发提交流程 |
 | `src/backend/modules/` | questioner、compressor、pruner、integrator、persistence |
 | `src/backend/llm/` | LLM client、embedding、prompt manager、mock client |
 | `config/` | 默认配置与 prompts |
@@ -158,6 +158,7 @@ uv run python run_tests.py ci
 
 - `quality` 做 Python 格式、导入顺序和类型检查
 - `ci` 做项目级本地验收，并校验默认 `data/` 工作区不被测试污染
+- 并发 MCTS 回归位于 `tests/unit/test_mcts_concurrency.py` 与 `tests/integration/test_mcts_concurrency.py`
 
 前端专属测试细节见 [`frontend-testing.md`](./frontend-testing.md)。
 

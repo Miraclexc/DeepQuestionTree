@@ -1,6 +1,6 @@
 # Testing And E2E
 
-> Last Updated: 2026-04-05
+> Last Updated: 2026-04-07
 >
 > 本页唯一负责：维护项目级测试总览、`run_tests.py` 语义、CI 约束、真实 provider E2E 与手动验收主流程。
 
@@ -14,7 +14,7 @@
 |---|---|---|
 | Quality | `black / isort / mypy` | 默认纳入 `run_tests.py quality` 与 `run_tests.py ci` |
 | Unit | `tests/unit/` | 默认执行 |
-| Integration | `tests/integration/` | 默认执行 |
+| Integration | `tests/integration/` | 默认执行，包含并发 MCTS 回归 |
 | Backend acceptance | `pytest tests/ -v --cov-fail-under=80` | 默认纳入 `run_tests.py ci` |
 | Real API E2E | `tests/e2e/` | 默认不收集，必须显式开启 |
 | Frontend acceptance | `cd src/frontend && npm run test:ci` | 默认纳入 `run_tests.py ci` |
@@ -55,6 +55,7 @@ uv run pytest tests/e2e/ -v --run-e2e --e2e-provider openai-compatible
 
 - `uv run pytest tests/ -v` 只覆盖 Python 测试，不执行前端 `.ts/.tsx`
 - `run_tests.py all` 会跑后端 pytest 和前端 `npm run test:ci`
+- 并发提交流程的后端回归位于 `tests/unit/test_mcts_concurrency.py` 与 `tests/integration/test_mcts_concurrency.py`
 
 ## 3. `run_tests.py` Semantics
 

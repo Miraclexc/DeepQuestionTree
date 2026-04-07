@@ -22,6 +22,7 @@ class RuntimeCoordinator:
     def __init__(self, repository: SessionRepository) -> None:
         self._repository = repository
         self._state_lock = asyncio.Lock()
+        self._commit_lock = asyncio.Lock()
         self._active_session: SessionData | None = None
         self._modules: RuntimeModules | None = None
         self._mcts_engine: MCTSEngine | None = None
@@ -116,6 +117,7 @@ class RuntimeCoordinator:
             pruner=modules.pruner,
             compressor=modules.compressor,
             settings=get_settings(),
+            commit_lock=self._commit_lock,
         )
 
     async def _run_mcts_loop(

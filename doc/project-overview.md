@@ -1,6 +1,6 @@
 # DeepQuestionTree Project Overview
 
-> Last Updated: 2026-04-05
+> Last Updated: 2026-04-07
 >
 > 本页唯一负责：记录当前代码已经落地的真实架构、运行时约束、配置边界、数据流与已知原型边界。
 
@@ -88,6 +88,15 @@ Backend (FastAPI app factory)
 - 活跃会话保留在运行时内存中，便于高频读写
 - 历史会话通过 JSON 仓储恢复
 
+当前并发模型：
+
+- `RuntimeCoordinator` 为活跃 session 持有单独的 commit 通道（`asyncio.Lock`）
+- 多个 worker 可以并发执行 `prepare` 阶段的外部调用
+- `MCTSEngine` 只在 `reserve` / `commit` 阶段写入 live `SessionData`
+- 每次成功提交都会递增 `session_revision`
+- 节点 reservation 通过 `processing_token` 标识；过期 proposal 在 commit 时会被拒绝并释放占用
+- 查询接口直接读活跃 session，但 commit 临界区内不执行 `await`，因此外部读取只会看到已提交状态
+
 ### 3.3 Persistence boundary
 
 持久化分两层：
@@ -160,6 +169,7 @@ Backend (FastAPI app factory)
 ## 7. Current Boundaries And Gaps
 
 - 不支持多用户并发探索
+- 单活跃 session 内已改为“两阶段提交 + 串行 commit”，但并发 prepare 在 revision 变化后仍可能被丢弃重试
 - 不引入数据库
 - 不引入实时推送
 - 仍然采用轮询式工作台
