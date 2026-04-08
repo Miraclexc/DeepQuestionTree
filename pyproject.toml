@@ -11,8 +11,6 @@ dependencies = [
     "uvicorn[standard]==0.42.0",
     "openai==2.30.0",
     "tenacity==9.1.4",
-    "sentence-transformers==5.3.0",
-    "numpy==2.4.4",
     "PyYAML==6.0.3",
     "python-dotenv==1.2.2",
     "Jinja2==3.1.6",
@@ -56,8 +54,6 @@ show_error_codes = true
 
 [[tool.mypy.overrides]]
 module = [
-    "numpy",
     "openai",
-    "sentence_transformers",
 ]
 ignore_missing_imports = true

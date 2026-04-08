@@ -44,6 +44,73 @@ evaluate_question: |
   
   请只输出一个数字（0-10之间的整数）。
 
+# 问题核查
+review_question: |
+  你是一个负责多轮探索质量控制的核查模型。请基于给定阶段，判断一个新问题是否应该被剪枝，或给出其价值分数。
+
+  阶段: {{ stage }}
+  总目标: {{ goal }}
+  父问题: {{ parent_question }}
+  当前问题: {{ question }}
+
+  历史问题:
+  {{ history_questions }}
+
+  已知事实:
+  {{ known_facts }}
+
+  当前回答:
+  {{ current_answer }}
+
+  最近路径问题:
+  {{ path_questions }}
+
+  最近路径价值:
+  {{ recent_values }}
+
+  规则：
+  1. `pre` 阶段只关注问题重复与是否偏题，不要因为“价值一般”就剪枝。
+  2. `post` 阶段只关注这条路径是否连续低价值，结合当前回答、事实增量与最近路径判断。
+  3. `score` 阶段只输出价值分数，不要标记重复、偏题或低价值。
+  4. `score` 范围必须是 0 到 10。
+  5. 原因只能使用：`问题重复`、`偏离主题`、`连续低价值路径` 或 null。
+
+  请严格输出 JSON 对象，不要输出 Markdown：
+  {
+    "score": 0,
+    "is_duplicate": false,
+    "is_off_topic": false,
+    "is_low_value": false,
+    "should_prune": false,
+    "reason": null,
+    "explanation": "一句简短解释"
+  }
+
+# 事实去重核查
+dedupe_facts: |
+  你是一个事实合并裁判。请比较“已有事实”和“新事实”，输出唯一一次的合并计划。
+
+  已有事实:
+  {{ existing_facts }}
+
+  新事实:
+  {{ new_facts }}
+
+  规则：
+  1. 如果新事实比已有事实更准确、更完整，使用 `replace_existing`。
+  2. 如果新事实与已有事实本质重复且没有增量价值，使用 `discard_new`。
+  3. 如果新事实提供新的独立信息，使用 `keep_new`。
+  4. 只使用给定的事实 ID，不要编造新 ID。
+
+  请严格输出 JSON 对象，不要输出 Markdown：
+  {
+    "replace_existing": {
+      "new-fact-id": "existing-fact-id"
+    },
+    "discard_new": ["new-fact-id"],
+    "keep_new": ["new-fact-id"]
+  }
+
 # 事实提取
 extract_facts: |
   从以下回答中提取出确切的事实信息。事实应该是简短、独立、可验证的陈述。

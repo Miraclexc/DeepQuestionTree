@@ -116,10 +116,10 @@ def test_load_settings_environment_overrides_dotenv_and_yaml(monkeypatch, tmp_pa
             llm:
               base_url: https://yaml.example/v1
               generation_model: yaml-model
-            embedding:
-              use_local: true
-              local_files_only: false
-              fallback_mode: none
+            checker:
+              question_history_window: 20
+              literal_normalization: false
+              fail_open: false
             storage:
               data_dir: yaml-data
               sessions_dir: yaml-data/sessions
@@ -147,9 +147,9 @@ def test_load_settings_environment_overrides_dotenv_and_yaml(monkeypatch, tmp_pa
     monkeypatch.setenv("APP__API_PORT", "9300")
     monkeypatch.setenv("LLM__BASE_URL", "https://env.example/v1")
     monkeypatch.setenv("LLM__GENERATION_MODEL", "env-model")
-    monkeypatch.setenv("EMBEDDING__USE_LOCAL", "false")
-    monkeypatch.setenv("EMBEDDING__LOCAL_FILES_ONLY", "true")
-    monkeypatch.setenv("EMBEDDING__FALLBACK_MODE", "hash")
+    monkeypatch.setenv("CHECKER__QUESTION_HISTORY_WINDOW", "50")
+    monkeypatch.setenv("CHECKER__LITERAL_NORMALIZATION", "true")
+    monkeypatch.setenv("CHECKER__FAIL_OPEN", "true")
     monkeypatch.setenv("STORAGE__DATA_DIR", str(tmp_path / "runtime-data"))
     monkeypatch.setenv(
         "STORAGE__SESSIONS_DIR",
@@ -171,9 +171,9 @@ def test_load_settings_environment_overrides_dotenv_and_yaml(monkeypatch, tmp_pa
     assert settings.app.api_port == 9300
     assert settings.llm.base_url == "https://env.example/v1"
     assert settings.llm.generation_model == "env-model"
-    assert settings.embedding.use_local is False
-    assert settings.embedding.local_files_only is True
-    assert settings.embedding.fallback_mode == "hash"
+    assert settings.checker.question_history_window == 50
+    assert settings.checker.literal_normalization is True
+    assert settings.checker.fail_open is True
     assert settings.storage.data_dir == str(tmp_path / "runtime-data")
     assert settings.storage.sessions_dir == str(tmp_path / "runtime-data" / "sessions")
     assert settings.storage.session_db_path == str(
@@ -192,6 +192,7 @@ def test_load_settings_uses_defaults_when_config_file_is_missing(monkeypatch, tm
     settings = load_settings("config/settings.yaml")
 
     assert settings.app.api_port == 8001
+    assert settings.checker.question_history_window == 50
     assert settings.storage.sessions_dir == "data/sessions"
     assert settings.storage.session_db_path == "data/sessions/deepquestiontree.sqlite3"
 

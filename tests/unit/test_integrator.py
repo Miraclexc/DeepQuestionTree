@@ -18,6 +18,7 @@ class ContractAwareIntegratorLLM:
         temperature=0.7,
         max_tokens=None,
         response_contract="text",
+        purpose="generation",
     ):
         self.response_contracts.append(response_contract)
         response = self.responses.pop(0)
@@ -27,9 +28,6 @@ class ContractAwareIntegratorLLM:
             tokens=response.get("tokens", 0),
             model=response.get("model", "contract-aware"),
         )
-
-    async def get_embedding(self, text):
-        return [0.1, 0.2, 0.3]
 
     async def get_usage_stats(self):
         return {}

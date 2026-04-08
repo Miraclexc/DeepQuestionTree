@@ -224,6 +224,7 @@ class Integrator:
                 messages=messages,
                 temperature=0.7,
                 response_contract="json_array",  # 提高创造性
+                purpose="generation",
             )
 
             if isinstance(response.structured_content, list):
@@ -259,6 +260,7 @@ class Integrator:
                 messages=messages,
                 temperature=0.7,
                 response_contract="json_array",
+                purpose="generation",
             )
 
             if isinstance(response.structured_content, list):
@@ -335,7 +337,11 @@ class Integrator:
 
             # 生成报告
             messages = [{"role": "user", "content": prompt}]
-            report = await self.llm.chat_completion(messages=messages, temperature=0.3)
+            report = await self.llm.chat_completion(
+                messages=messages,
+                temperature=0.3,
+                purpose="generation",
+            )
 
             return report.content
 
@@ -355,7 +361,11 @@ class Integrator:
             )
 
             messages = [{"role": "user", "content": prompt}]
-            summary = await self.llm.chat_completion(messages=messages, temperature=0.3)
+            summary = await self.llm.chat_completion(
+                messages=messages,
+                temperature=0.3,
+                purpose="generation",
+            )
 
             return summary.content.strip()
 

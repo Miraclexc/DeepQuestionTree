@@ -1,1 +1,1 @@
-"""LLM and embedding adapters."""
+"""LLM adapters."""

@@ -72,7 +72,7 @@ def test_missing_required_api_key_raises_clear_error():
 
 
 @pytest.mark.unit
-def test_build_backend_environment_enforces_embedding_fallback_for_real_e2e():
+def test_build_backend_environment_does_not_inject_embedding_overrides():
     profile = resolve_provider_profile(
         provider="deepseek",
         environ={
@@ -86,6 +86,6 @@ def test_build_backend_environment_enforces_embedding_fallback_for_real_e2e():
         data_dir=Path("D:/tmp/dqt-e2e"),
     )
 
-    assert env["EMBEDDING__USE_LOCAL"] == "true"
-    assert env["EMBEDDING__LOCAL_FILES_ONLY"] == "true"
-    assert env["EMBEDDING__FALLBACK_MODE"] == "hash"
+    assert "EMBEDDING__USE_LOCAL" not in env
+    assert "EMBEDDING__LOCAL_FILES_ONLY" not in env
+    assert "EMBEDDING__FALLBACK_MODE" not in env

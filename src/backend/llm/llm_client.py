@@ -18,6 +18,7 @@ from ..utils.logger import get_logger
 from .client_interface import (
     BaseLLMClient,
     CompletionResponse,
+    Purpose,
     ResponseContract,
     StructuredOutputContractError,
     parse_structured_content,
@@ -43,7 +44,6 @@ class OpenAICompatibleClient(BaseLLMClient):
 
         self.generation_model = settings.llm.generation_model
         self.decision_model = settings.llm.decision_model
-        self.embedding_model = settings.embedding.api_model
 
         # 使用统计
         self.total_tokens_used = 0
@@ -61,17 +61,15 @@ class OpenAICompatibleClient(BaseLLMClient):
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         response_contract: ResponseContract = "text",
+        purpose: Purpose = "generation",
     ) -> CompletionResponse:
         """
         执行对话请求，包含自动重试逻辑
         """
         try:
-            # 根据用途选择模型
-            model = self.generation_model
-            if "评估" in messages[-1].get("content", "") or "score" in messages[-1].get(
-                "content", ""
-            ):
-                model = self.decision_model
+            model = (
+                self.decision_model if purpose == "decision" else self.generation_model
+            )
 
             # 设置响应格式
             response_format = (
@@ -135,33 +133,6 @@ class OpenAICompatibleClient(BaseLLMClient):
         except Exception as e:
             raise Exception(f"LLM API 调用失败: {e}")
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((openai.RateLimitError, openai.APITimeoutError)),
-    )
-    async def get_embedding(self, text: str) -> List[float]:
-        """
-        获取文本嵌入向量
-        """
-        try:
-            response = await self.client.embeddings.create(
-                model=self.embedding_model, input=text
-            )
-
-            # 更新使用统计
-            if response.usage:
-                self.total_tokens_used += response.usage.total_tokens
-                self.total_cost += self._estimate_cost(
-                    self.embedding_model, response.usage.total_tokens
-                )
-            self.request_count += 1
-
-            return response.data[0].embedding
-
-        except Exception as e:
-            raise Exception(f"嵌入 API 调用失败: {e}")
-
     async def get_usage_stats(self) -> Dict[str, Any]:
         """获取使用统计"""
         return {
@@ -187,7 +158,6 @@ class OpenAICompatibleClient(BaseLLMClient):
             "gpt-4": 0.03,
             "gpt-4o": 0.005,
             "gpt-3.5-turbo": 0.002,
-            "text-embedding-ada-002": 0.0001,
             "deepseek-chat": 0.0014,
             "moonshot-v1-8k": 0.012,
         }

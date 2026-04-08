@@ -54,17 +54,11 @@ function buildBackendEnvironment(): Record<string, string> {
         env.LLM__DECISION_MODEL =
             process.env.PLAYWRIGHT_E2E_DEEPSEEK_DECISION_MODEL ??
             env.LLM__GENERATION_MODEL;
-        env.EMBEDDING__USE_LOCAL = process.env.EMBEDDING__USE_LOCAL ?? "true";
-        env.EMBEDDING__LOCAL_FILES_ONLY =
-            process.env.EMBEDDING__LOCAL_FILES_ONLY ?? "true";
-        env.EMBEDDING__FALLBACK_MODE =
-            process.env.EMBEDDING__FALLBACK_MODE ?? "hash";
         return env;
     }
 
     if (provider === "mock") {
         env.APP__MOCK_LLM = process.env.PLAYWRIGHT_BACKEND_MOCK_LLM ?? "true";
-        env.EMBEDDING__USE_LOCAL = process.env.EMBEDDING__USE_LOCAL ?? "false";
         return env;
     }
 

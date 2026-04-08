@@ -122,9 +122,6 @@ def build_backend_environment(
             "STORAGE__LOGS_DIR": str(logs_dir),
             "MCTS__PARALLEL_WORKERS": "1",
             "MCTS__MAX_SIMULATIONS": str(profile.max_simulations),
-            "EMBEDDING__USE_LOCAL": "true",
-            "EMBEDDING__LOCAL_FILES_ONLY": "true",
-            "EMBEDDING__FALLBACK_MODE": "hash",
         }
     )
     return env

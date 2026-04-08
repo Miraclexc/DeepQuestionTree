@@ -48,8 +48,8 @@ Backend (FastAPI app factory)
 | Runtime coordinator | 管理单活跃会话、MCTS engine 与后台任务生命周期 | `src/backend/services/coordinator.py` |
 | Repository boundary | 将 `SessionManager` 包装成显式应用层仓储 | `src/backend/services/session_repository.py` |
 | Core | 领域对象与 MCTS engine | `src/backend/core/*` |
-| Domain modules | questioner、compressor、pruner、integrator、persistence | `src/backend/modules/*` |
-| LLM / embedding | OpenAI-compatible client、mock client、embedding manager、结构化输出契约 | `src/backend/llm/*` |
+| Domain modules | checker、questioner、compressor、pruner、integrator、persistence | `src/backend/modules/*` |
+| LLM / checker | OpenAI-compatible client、mock client、基于 `purpose` 的模型路由、结构化输出契约 | `src/backend/llm/*` |
 
 ### 2.2 Frontend modules
 
@@ -146,9 +146,20 @@ Backend (FastAPI app factory)
 
 当前真实边界：
 
+- `chat_completion(..., purpose="generation" | "decision")` 显式声明调用目的；
+- `purpose="decision"` 固定走 `llm.decision_model`；
 - `json_object` 通过 OpenAI-compatible `response_format={"type":"json_object"}` 约束；
 - `json_array` 不依赖 provider 的对象模式，而是由 Prompt 明确数组格式，再由客户端校验顶层必须是数组；
 - 业务模块只消费解析后的结构化载荷，不再在多个模块里重复 `json.loads()`。
+
+### 4.2 Checker boundary
+
+当前系统不再暴露 embedding / 余弦相似度接口。问题剪枝和事实合并统一改为 checker 链路：
+
+- `checker.review_question()`：支持 `pre` / `post` / `score`
+- `checker.dedupe_facts()`：一次性输出事实合并计划
+- `pruner` 只保留编排职责与确定性规则（最大深度、事实饱和）
+- `compressor.merge_facts()` 先做字面归一化短路，再做单次批量核查
 
 结构化调用的唯一细则见 [`llm-structured-output-contract.md`](./llm-structured-output-contract.md)。
 

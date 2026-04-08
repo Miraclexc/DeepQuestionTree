@@ -10,10 +10,10 @@ from typing import Any, Dict, List, Optional
 from .client_interface import (
     BaseLLMClient,
     CompletionResponse,
+    Purpose,
     ResponseContract,
     parse_structured_content,
 )
-from .hash_embedding import build_hash_embedding
 
 
 class MockClient(BaseLLMClient):
@@ -56,6 +56,7 @@ class MockClient(BaseLLMClient):
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         response_contract: ResponseContract = "text",
+        purpose: Purpose = "generation",
     ) -> CompletionResponse:
         """
         Mock 聊天完成
@@ -137,14 +138,6 @@ class MockClient(BaseLLMClient):
             structured_content=structured_content,
         )
 
-    async def get_embedding(self, text: str) -> List[float]:
-        """
-        Mock 嵌入向量生成
-        """
-        self.request_count += 1
-        self.total_tokens_used += len(text) // 4  # 粗略估算
-        return build_hash_embedding(text)
-
     async def get_usage_stats(self) -> Dict[str, Any]:
         """获取使用统计"""
         return {
@@ -209,6 +202,35 @@ class MockClient(BaseLLMClient):
         return json.dumps(fallback_items, ensure_ascii=False)
 
     def _build_json_object_content(self, last_msg: str) -> str:
+        if "replace_existing" in last_msg and "discard_new" in last_msg:
+            return json.dumps(
+                {
+                    "replace_existing": {},
+                    "discard_new": [],
+                    "keep_new": [],
+                },
+                ensure_ascii=False,
+            )
+
+        if (
+            "is_duplicate" in last_msg
+            or "is_off_topic" in last_msg
+            or "is_low_value" in last_msg
+            or "should_prune" in last_msg
+        ):
+            return json.dumps(
+                {
+                    "score": random.randint(4, 8),
+                    "is_duplicate": False,
+                    "is_off_topic": False,
+                    "is_low_value": False,
+                    "should_prune": False,
+                    "reason": None,
+                    "explanation": "mock checker review",
+                },
+                ensure_ascii=False,
+            )
+
         score = random.randint(1, 10)
         reasons = [
             "可能揭示新的技术细节",

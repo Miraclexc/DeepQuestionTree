@@ -14,7 +14,7 @@ from src.backend.modules.questioner import Questioner
 class ContractAwareQuestionerLLM:
     def __init__(self, responses):
         self.responses = list(responses)
-        self.response_contracts: list[str] = []
+        self.calls: list[dict] = []
 
     async def chat_completion(
         self,
@@ -22,8 +22,17 @@ class ContractAwareQuestionerLLM:
         temperature=0.7,
         max_tokens=None,
         response_contract="text",
+        purpose="generation",
     ):
-        self.response_contracts.append(response_contract)
+        self.calls.append(
+            {
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "response_contract": response_contract,
+                "purpose": purpose,
+            }
+        )
         response = self.responses.pop(0)
         return SimpleNamespace(
             content=response["content"],
@@ -32,9 +41,6 @@ class ContractAwareQuestionerLLM:
             model=response.get("model", "contract-aware"),
         )
 
-    async def get_embedding(self, text):
-        return [0.1, 0.2, 0.3]
-
     async def get_usage_stats(self):
         return {}
 
@@ -42,150 +48,114 @@ class ContractAwareQuestionerLLM:
         return None
 
 
+class SequenceQuestionerChecker:
+    def __init__(self, reviews=None):
+        self.reviews = list(reviews or [])
+        self.calls: list[dict] = []
+
+    async def review_question(self, **kwargs):
+        self.calls.append(kwargs)
+        payload = self.reviews.pop(0) if self.reviews else {}
+        return SimpleNamespace(
+            score=payload.get("score", 5.0),
+            is_duplicate=payload.get("is_duplicate", False),
+            is_off_topic=payload.get("is_off_topic", False),
+            is_low_value=payload.get("is_low_value", False),
+            should_prune=payload.get("should_prune", False),
+            reason=payload.get("reason"),
+            explanation=payload.get("explanation", ""),
+        )
+
+
 @pytest.mark.unit
 class TestQuestioner:
     """测试提问者模块"""
 
     @pytest.fixture
-    def questioner(self, mock_llm_client, embedding_manager):
-        """创建提问者实例"""
-        return Questioner(mock_llm_client, embedding_manager)
+    def questioner(self, mock_llm_client):
+        return Questioner(
+            mock_llm_client,
+            checker=SequenceQuestionerChecker(),
+        )
 
     async def test_generate_candidates_basic(self, questioner):
-        """测试基本的候选问题生成"""
         context_facts = [
             Fact(content="深度学习是机器学习的子领域", source_node_id="node_1"),
             Fact(content="神经网络包含多层", source_node_id="node_1"),
         ]
-        current_answer = "深度学习使用多层神经网络..."
-        goal = "了解AI技术"
 
         questions = await questioner.generate_candidates(
-            context_facts=context_facts, current_answer=current_answer, goal=goal, k=3
+            context_facts=context_facts,
+            current_answer="深度学习使用多层神经网络...",
+            goal="了解AI技术",
+            k=3,
         )
 
-        # 应该生成至少一些问题
         assert isinstance(questions, list)
         assert len(questions) > 0
-        assert len(questions) <= 3  # 不超过请求数量
-
-        # 每个问题应该是字符串
-        for q in questions:
-            assert isinstance(q, str)
-            assert len(q) > 5  # 问题应该有实际内容
+        assert len(questions) <= 3
+        assert all(
+            isinstance(question, str) and len(question) > 5 for question in questions
+        )
 
     async def test_generate_candidates_different_k(self, questioner):
-        """测试不同的 k 值"""
-        context_facts = []
-        current_answer = "测试回答"
-        goal = "测试目标"
-
-        # k=1
         questions_1 = await questioner.generate_candidates(
-            context_facts, current_answer, goal, k=1
+            [], "测试回答", "测试目标", k=1
         )
-        assert len(questions_1) <= 1
-
-        # k=5
         questions_5 = await questioner.generate_candidates(
-            context_facts, current_answer, goal, k=5
+            [], "测试回答", "测试目标", k=5
         )
+
+        assert len(questions_1) <= 1
         assert len(questions_5) <= 5
 
-    async def test_evaluate_question_value(self, questioner):
-        """测试问题价值评估"""
-        question = "深度学习的核心原理是什么？"
-        known_facts = [
-            Fact(content="深度学习是机器学习的子领域", source_node_id="node_1")
-        ]
-        goal = "了解深度学习"
-
-        score = await questioner.evaluate_question_value(
-            question=question, known_facts=known_facts, goal=goal
+    async def test_check_duplicate_identical_question(self):
+        checker = SequenceQuestionerChecker(
+            reviews=[
+                {
+                    "is_duplicate": True,
+                    "should_prune": True,
+                    "reason": "问题重复",
+                }
+            ]
         )
-
-        # 分数应该在 0-10 范围内
-        assert isinstance(score, float)
-        assert 0.0 <= score <= 10.0
-
-    async def test_evaluate_question_value_bounds(self, questioner):
-        """测试评估分数边界"""
-        question = "测试问题"
-        known_facts = []
-        goal = "测试目标"
-
-        # 多次评估，确保分数始终在范围内
-        for _ in range(5):
-            score = await questioner.evaluate_question_value(
-                question, known_facts, goal
-            )
-            assert 0.0 <= score <= 10.0
-
-    async def test_check_duplicate_first_question(self, questioner):
-        """测试第一个问题（不重复）"""
-        question = "这是第一个问题"
-
-        is_duplicate = await questioner.check_duplicate(question)
-
-        # 第一个问题不应该被认为是重复
-        assert not is_duplicate
-        # 应该被加入历史
-        assert question in questioner.history_questions
-
-    async def test_check_duplicate_identical_question(self, questioner):
-        """测试完全相同的问题"""
+        questioner = Questioner(ContractAwareQuestionerLLM([]), checker=checker)
         question = "这是一个测试问题"
 
-        # 第一次不重复
-        is_dup_1 = await questioner.check_duplicate(question, threshold=0.9)
-        assert not is_dup_1
+        assert await questioner.check_duplicate(question) is False
+        assert await questioner.check_duplicate(question) is True
+        assert len(questioner.history_questions) == 1
+        assert checker.calls[0]["history_questions"] == [question]
 
-        # 第二次应该重复
-        is_dup_2 = await questioner.check_duplicate(question, threshold=0.9)
-        assert is_dup_2
+    async def test_check_duplicate_different_questions(self):
+        checker = SequenceQuestionerChecker(
+            reviews=[
+                {
+                    "is_duplicate": False,
+                    "should_prune": False,
+                }
+            ]
+        )
+        questioner = Questioner(ContractAwareQuestionerLLM([]), checker=checker)
 
-    async def test_check_duplicate_different_questions(self, questioner):
-        """测试不同的问题"""
-        question1 = "深度学习的原理是什么？"
-        question2 = "Transformer 架构如何工作？"
+        await questioner.check_duplicate("深度学习的原理是什么？")
+        is_duplicate = await questioner.check_duplicate("Transformer 架构如何工作？")
 
-        await questioner.check_duplicate(question1)
-        is_duplicate = await questioner.check_duplicate(question2)
+        assert is_duplicate is False
+        assert len(questioner.history_questions) == 2
 
-        # 两个不同的问题不应该被认为是重复
-        assert not is_duplicate
+    async def test_history_limit_uses_checker_window(self):
+        checker = SequenceQuestionerChecker(
+            reviews=[{"is_duplicate": False, "should_prune": False}] * 60
+        )
+        questioner = Questioner(ContractAwareQuestionerLLM([]), checker=checker)
 
-    async def test_check_duplicate_threshold(self, questioner):
-        """测试不同的相似度阈值"""
-        question1 = "什么是深度学习？"
+        for i in range(60):
+            await questioner.check_duplicate(f"测试问题 {i}")
 
-        await questioner.check_duplicate(question1)
-
-        # 相似但不完全相同的问题
-        question2 = "什么是深度学习"  # 缺少问号
-
-        # 高阈值（严格）
-        is_dup_strict = await questioner.check_duplicate(question2, threshold=0.99)
-
-        # 低阈值（宽松）
-        is_dup_loose = await questioner.check_duplicate(question2, threshold=0.5)
-
-        # 至少有一种情况应该能工作
-        assert isinstance(is_dup_strict, bool)
-        assert isinstance(is_dup_loose, bool)
-
-    async def test_history_limit(self, questioner):
-        """测试历史问题数量限制"""
-        # 添加大量问题
-        for i in range(1100):  # 超过限制 1000
-            question = f"测试问题 {i}"
-            await questioner.check_duplicate(question)
-
-        # 历史应该被限制在 1000 个
-        assert len(questioner.history_questions) <= 1000
+        assert len(questioner.history_questions) <= 50
 
     def test_extract_questions_from_text(self, questioner):
-        """测试从文本中提取问题"""
         text = """
         1. 深度学习的核心原理是什么？
         2. Transformer 如何工作？
@@ -195,39 +165,24 @@ class TestQuestioner:
 
         questions = questioner._extract_questions_from_text(text)
 
-        # 应该提取到一些问题
         assert isinstance(questions, list)
         assert len(questions) > 0
 
     def test_extract_score_from_response(self, questioner):
-        """测试从响应中提取分数"""
-        # 纯数字
-        score1 = questioner._extract_score("8")
-        assert score1 == 8.0
-
-        # 带文字的数字
-        score2 = questioner._extract_score("评分：7.5 分")
-        assert score2 == 7.5
-
-        # JSON 格式
-        score3 = questioner._extract_score('{"score": 9, "reason": "高价值"}')
-        assert score3 == 9.0
-
-        # 无法解析的文本
-        score4 = questioner._extract_score("无法解析")
-        assert score4 == 5.0  # 应该返回默认值
+        assert questioner._extract_score("8") == 8.0
+        assert questioner._extract_score("评分：7.5 分") == 7.5
+        assert questioner._extract_score('{"score": 9, "reason": "高价值"}') == 9.0
+        assert questioner._extract_score("无法解析") == 5.0
 
     def test_get_default_questions(self, questioner):
-        """测试获取默认问题"""
         questions = questioner._get_default_questions(k=3)
 
         assert isinstance(questions, list)
         assert len(questions) == 3
-        assert all(isinstance(q, str) for q in questions)
+        assert all(isinstance(question, str) for question in questions)
 
-    async def test_generate_candidates_uses_json_array_contract(
+    async def test_generate_candidates_uses_generation_purpose_and_json_array_contract(
         self,
-        embedding_manager,
     ):
         llm_client = ContractAwareQuestionerLLM(
             [
@@ -237,7 +192,7 @@ class TestQuestioner:
                 }
             ]
         )
-        questioner = Questioner(llm_client, embedding_manager)
+        questioner = Questioner(llm_client, checker=SequenceQuestionerChecker())
 
         questions = await questioner.generate_candidates(
             context_facts=[],
@@ -246,22 +201,21 @@ class TestQuestioner:
             k=2,
         )
 
-        assert llm_client.response_contracts == ["json_array"]
+        assert llm_client.calls[0]["response_contract"] == "json_array"
+        assert llm_client.calls[0]["purpose"] == "generation"
         assert questions == ["问题一是什么？", "问题二是什么？"]
 
-    async def test_evaluate_question_value_uses_text_contract(
-        self,
-        embedding_manager,
-    ):
-        llm_client = ContractAwareQuestionerLLM(
+    async def test_evaluate_question_value_uses_checker_score(self):
+        llm_client = ContractAwareQuestionerLLM([])
+        checker = SequenceQuestionerChecker(
             [
                 {
-                    "content": "8",
-                    "structured_content": None,
+                    "score": 8.0,
+                    "explanation": "这个问题能带来高信息增益。",
                 }
             ]
         )
-        questioner = Questioner(llm_client, embedding_manager)
+        questioner = Questioner(llm_client, checker=checker)
 
         score = await questioner.evaluate_question_value(
             question="这个问题有多重要？",
@@ -269,39 +223,40 @@ class TestQuestioner:
             goal="测试目标",
         )
 
-        assert llm_client.response_contracts == ["text"]
+        assert llm_client.calls == []
+        assert checker.calls[0]["stage"] == "score"
         assert score == 8.0
 
 
 @pytest.mark.unit
 class TestQuestionerEdgeCases:
-    """测试 Questioner 的边界情况"""
-
     @pytest.fixture
-    def questioner(self, mock_llm_client, embedding_manager):
-        return Questioner(mock_llm_client, embedding_manager)
-
-    async def test_generate_candidates_empty_context(self, questioner):
-        """测试空上下文"""
-        questions = await questioner.generate_candidates(
-            context_facts=[], current_answer="", goal="测试", k=3
+    def questioner(self, mock_llm_client):
+        return Questioner(
+            mock_llm_client,
+            checker=SequenceQuestionerChecker(),
         )
 
-        # 应该返回列表（可能是默认问题）
+    async def test_generate_candidates_empty_context(self, questioner):
+        questions = await questioner.generate_candidates(
+            context_facts=[],
+            current_answer="",
+            goal="测试",
+            k=3,
+        )
+
         assert isinstance(questions, list)
 
     async def test_evaluate_question_empty_facts(self, questioner):
-        """测试无已知事实的评估"""
         score = await questioner.evaluate_question_value(
-            question="测试问题", known_facts=[], goal="测试目标"
+            question="测试问题",
+            known_facts=[],
+            goal="测试目标",
         )
 
-        # 应该返回有效分数
         assert 0.0 <= score <= 10.0
 
     async def test_check_duplicate_empty_string(self, questioner):
-        """测试空字符串"""
         is_duplicate = await questioner.check_duplicate("")
 
-        # 空字符串应该被处理
         assert isinstance(is_duplicate, bool)

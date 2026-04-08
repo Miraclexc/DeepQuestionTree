@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import yaml
 from dotenv import dotenv_values
@@ -20,7 +20,7 @@ CONFIG_SECTIONS = {
     "app",
     "llm",
     "mcts",
-    "embedding",
+    "checker",
     "storage",
     "logging",
     "security",
@@ -70,15 +70,12 @@ class MCTSConfig(BaseModel):
     parallel_workers: int = 1
 
 
-class EmbeddingConfig(BaseModel):
-    """嵌入模型配置"""
+class CheckerConfig(BaseModel):
+    """核查模型配置"""
 
-    use_local: bool = True
-    model_path: str = "DMetaSoul/sbert-chinese-general-v2-distill"
-    api_model: str = "text-embedding-ada-002"
-    similarity_threshold: float = 0.85
-    local_files_only: bool = True
-    fallback_mode: Literal["hash", "none"] = "hash"
+    question_history_window: int = 50
+    literal_normalization: bool = True
+    fail_open: bool = True
 
 
 class StorageConfig(BaseModel):
@@ -113,7 +110,7 @@ class Settings(BaseModel):
     app: AppConfig = Field(default_factory=AppConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     mcts: MCTSConfig = Field(default_factory=MCTSConfig)
-    embedding: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
+    checker: CheckerConfig = Field(default_factory=CheckerConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)

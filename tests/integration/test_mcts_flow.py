@@ -9,37 +9,16 @@ import pytest
 
 from src.backend.core.mcts_engine import MCTSEngine
 from src.backend.core.schema import Node, QAInteraction, SessionData
-from src.backend.llm.embedding import get_embedding_manager
-from src.backend.llm.hash_embedding import build_hash_embedding
 from src.backend.llm.mock_client import MockClient
 from src.backend.modules.compressor import Compressor
 from src.backend.modules.pruner import Pruner
 from src.backend.modules.questioner import Questioner
 
 
-class ContractSequenceLLM:
-    def __init__(self):
-        self.response_contracts: list[str] = []
-        self.responses = [
-            {
-                "content": '["后续问题是什么？"]',
-                "structured_content": ["后续问题是什么？"],
-                "tokens": 11,
-                "model": "structured-model",
-            },
-            {
-                "content": "这是一个结构化契约下生成的回答。",
-                "structured_content": None,
-                "tokens": 13,
-                "model": "structured-model",
-            },
-            {
-                "content": '[{"content": "结构化事实", "confidence": 0.92}]',
-                "structured_content": [{"content": "结构化事实", "confidence": 0.92}],
-                "tokens": 17,
-                "model": "structured-model",
-            },
-        ]
+class SequenceLLM:
+    def __init__(self, responses=None):
+        self.calls: list[dict] = []
+        self.responses = list(responses or [])
 
     async def chat_completion(
         self,
@@ -47,8 +26,17 @@ class ContractSequenceLLM:
         temperature=0.7,
         max_tokens=None,
         response_contract="text",
+        purpose="generation",
     ):
-        self.response_contracts.append(response_contract)
+        self.calls.append(
+            {
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "response_contract": response_contract,
+                "purpose": purpose,
+            }
+        )
         response = self.responses.pop(0)
         return SimpleNamespace(
             content=response["content"],
@@ -57,9 +45,6 @@ class ContractSequenceLLM:
             model=response["model"],
         )
 
-    async def get_embedding(self, text):
-        return build_hash_embedding(text)
-
     async def get_usage_stats(self):
         return {}
 
@@ -67,18 +52,41 @@ class ContractSequenceLLM:
         return None
 
 
+class SequenceChecker:
+    def __init__(self, reviews=None):
+        self.reviews = list(reviews or [])
+        self.review_calls: list[dict] = []
+        self.dedupe_calls: list[dict] = []
+
+    async def review_question(self, **kwargs):
+        self.review_calls.append(kwargs)
+        payload = self.reviews.pop(0) if self.reviews else {}
+        return SimpleNamespace(
+            score=payload.get("score", 6.0),
+            is_duplicate=payload.get("is_duplicate", False),
+            is_off_topic=payload.get("is_off_topic", False),
+            is_low_value=payload.get("is_low_value", False),
+            should_prune=payload.get("should_prune", False),
+            reason=payload.get("reason"),
+            explanation=payload.get("explanation", ""),
+        )
+
+    async def dedupe_facts(self, existing_facts, new_facts):
+        self.dedupe_calls.append(
+            {
+                "existing_facts": existing_facts,
+                "new_facts": new_facts,
+            }
+        )
+        return SimpleNamespace(replace_existing={}, discard_new=[], keep_new=[])
+
+
 @pytest.mark.integration
 @pytest.mark.asyncio
 class TestMCTSFlow:
-    """测试 MCTS 完整流程"""
-
     @pytest.fixture
     def setup_mcts_environment(self):
-        """设置 MCTS 测试环境"""
-        # 创建会话
         session = SessionData(global_goal="探索人工智能技术的未来发展")
-
-        # 创建根节点
         root_node = Node(
             id=session.root_node_id,
             depth=0,
@@ -90,43 +98,32 @@ class TestMCTSFlow:
         )
         session.add_node(root_node)
 
-        # 创建 LLM 客户端和模块
         llm_client = MockClient()
-        embedding_manager = get_embedding_manager()
-        embedding_manager.set_client(llm_client)
-
-        questioner = Questioner(llm_client, embedding_manager)
-        pruner = Pruner(llm_client, embedding_manager)
-
-        # 创建 MCTS 引擎
-        # 注意：这需要修复 mcts_engine.py 的初始化
-        engine = MCTSEngine(session)
+        checker = SequenceChecker()
+        engine = MCTSEngine(
+            session,
+            questioner=Questioner(llm_client, checker=checker),
+            pruner=Pruner(llm_client, checker=checker),
+            compressor=Compressor(llm_client, checker=checker),
+        )
 
         return {
             "session": session,
             "engine": engine,
-            "llm_client": llm_client,
-            "questioner": questioner,
-            "pruner": pruner,
         }
 
     async def test_mcts_initialization(self, setup_mcts_environment):
-        """测试 MCTS 引擎初始化"""
-        env = setup_mcts_environment
-        engine = env["engine"]
-        session = env["session"]
+        engine = setup_mcts_environment["engine"]
+        session = setup_mcts_environment["session"]
 
         assert engine is not None
         assert engine.session == session
         assert engine.c_param > 0
 
     async def test_mcts_selection(self, setup_mcts_environment):
-        """测试 Selection 步骤"""
-        env = setup_mcts_environment
-        engine = env["engine"]
-        session = env["session"]
+        engine = setup_mcts_environment["engine"]
+        session = setup_mcts_environment["session"]
 
-        # 添加一些子节点
         child1 = Node(
             parent_id=session.root_node_id,
             depth=1,
@@ -147,68 +144,45 @@ class TestMCTSFlow:
         session.add_node(child2)
         session.nodes[session.root_node_id].children_ids = [child1.id, child2.id]
 
-        # 执行 Selection
         leaf_id = engine._select(session.root_node_id)
 
-        # 应该选中一个叶子节点
         assert leaf_id in [child1.id, child2.id]
 
     async def test_mcts_single_step(self, setup_mcts_environment):
-        """测试单次 MCTS 迭代"""
-        env = setup_mcts_environment
-        engine = env["engine"]
-        session = env["session"]
-
+        engine = setup_mcts_environment["engine"]
+        session = setup_mcts_environment["session"]
         initial_simulations = session.total_simulations
 
-        # 执行一步（注意：当前 expand 返回空列表）
-        result = await engine.run_step()
+        await engine.run_step()
 
-        # 模拟次数应该增加（如果成功执行）
-        # 由于 expand 未实现，可能返回 None
-        if result:
-            assert session.total_simulations > initial_simulations
+        assert session.total_simulations >= initial_simulations
 
     async def test_mcts_multiple_iterations(self, setup_mcts_environment):
-        """测试多次 MCTS 迭代"""
-        env = setup_mcts_environment
-        engine = env["engine"]
-        session = env["session"]
+        engine = setup_mcts_environment["engine"]
+        session = setup_mcts_environment["session"]
 
-        # 执行多次迭代
-        max_iterations = 5
-        for i in range(max_iterations):
+        for _ in range(5):
             if engine.should_stop():
                 break
             await engine.run_step()
 
-        # 会话应该有一些更新
         assert session.total_simulations >= 0
 
     async def test_mcts_stop_conditions(self, setup_mcts_environment):
-        """测试停止条件"""
-        env = setup_mcts_environment
-        engine = env["engine"]
-        session = env["session"]
+        engine = setup_mcts_environment["engine"]
+        session = setup_mcts_environment["session"]
 
-        # 测试最大模拟次数
         session.total_simulations = 100
         assert engine.should_stop()
 
-        # 重置
         session.total_simulations = 0
-
-        # 测试无活跃节点
         session.nodes[session.root_node_id].is_terminal = True
         assert engine.should_stop()
 
     async def test_mcts_tree_statistics(self, setup_mcts_environment):
-        """测试树统计信息"""
-        env = setup_mcts_environment
-        engine = env["engine"]
-        session = env["session"]
+        engine = setup_mcts_environment["engine"]
+        session = setup_mcts_environment["session"]
 
-        # 添加一些节点
         for i in range(3):
             node = Node(
                 parent_id=session.root_node_id,
@@ -224,21 +198,18 @@ class TestMCTSFlow:
         assert "total_nodes" in stats
         assert "total_simulations" in stats
         assert "tree_depth" in stats
-        assert stats["total_nodes"] >= 4  # 根节点 + 3个子节点
+        assert stats["total_nodes"] >= 4
 
     async def test_mcts_get_best_child(self, setup_mcts_environment):
-        """测试获取最佳子节点"""
-        env = setup_mcts_environment
-        engine = env["engine"]
-        session = env["session"]
+        engine = setup_mcts_environment["engine"]
+        session = setup_mcts_environment["session"]
 
-        # 添加子节点
         child1 = Node(
             parent_id=session.root_node_id,
             depth=1,
             interaction=QAInteraction(question="问题1", answer="回答1"),
         )
-        child1.state.visit_count = 10  # 访问最多
+        child1.state.visit_count = 10
 
         child2 = Node(
             parent_id=session.root_node_id,
@@ -253,58 +224,182 @@ class TestMCTSFlow:
 
         best_child = engine.get_best_child()
 
-        # 应该选中访问次数最多的子节点
         assert best_child.id == child1.id
 
-    async def test_mcts_structured_contract_chain(self):
-        session = SessionData(global_goal="测试结构化输出契约")
+    async def test_mcts_pre_review_prunes_duplicate_before_answer(self):
+        session = SessionData(global_goal="测试预检查剪枝")
         root_node = Node(
             id=session.root_node_id,
             depth=0,
-            interaction=QAInteraction(
-                question="测试结构化输出契约",
-                answer="探索起点",
-            ),
+            interaction=QAInteraction(question="测试预检查剪枝", answer="探索起点"),
+        )
+        duplicate_leaf = Node(
+            parent_id=root_node.id,
+            depth=1,
+            interaction=QAInteraction(question="重复问题", answer=""),
         )
         session.add_node(root_node)
+        session.add_node(duplicate_leaf)
+        root_node.children_ids = [duplicate_leaf.id]
 
-        llm_client = ContractSequenceLLM()
-        embedding_manager = get_embedding_manager()
-        embedding_manager.set_client(llm_client, prefer_client=True)
-
-        questioner = Questioner(llm_client, embedding_manager)
-        compressor = Compressor(llm_client)
-        compressor.embedding_manager.set_client(llm_client, prefer_client=True)
-
+        llm_client = SequenceLLM([])
+        checker = SequenceChecker(
+            reviews=[
+                {
+                    "is_duplicate": True,
+                    "should_prune": True,
+                    "reason": "问题重复",
+                }
+            ]
+        )
         engine = MCTSEngine(
             session,
-            questioner=questioner,
-            compressor=compressor,
+            questioner=Questioner(llm_client, checker=checker),
+            compressor=Compressor(llm_client, checker=checker),
+            pruner=Pruner(llm_client, checker=checker),
         )
 
-        new_node_ids = await engine._expand(session, root_node)
-        assert len(new_node_ids) == 1
+        result = await engine.run_step()
 
-        child_node = session.nodes[new_node_ids[0]]
-        await engine._process_node(session, child_node)
+        assert result is None
+        assert duplicate_leaf.is_pruned is True
+        assert duplicate_leaf.prune_reason == "问题重复"
+        assert llm_client.calls == []
 
-        assert llm_client.response_contracts == ["json_array", "text", "json_array"]
-        assert child_node.interaction.answer == "这是一个结构化契约下生成的回答。"
+    async def test_mcts_post_review_prunes_low_value_after_processing(self):
+        session = SessionData(global_goal="测试后检查剪枝")
+        root_node = Node(
+            id=session.root_node_id,
+            depth=0,
+            interaction=QAInteraction(question="测试后检查剪枝", answer="探索起点"),
+        )
+        leaf = Node(
+            parent_id=root_node.id,
+            depth=1,
+            interaction=QAInteraction(question="这个方向是否值得继续？", answer=""),
+        )
+        session.add_node(root_node)
+        session.add_node(leaf)
+        root_node.children_ids = [leaf.id]
+
+        llm_client = SequenceLLM(
+            responses=[
+                {
+                    "content": "这是回答内容。",
+                    "structured_content": None,
+                    "tokens": 12,
+                    "model": "answer-model",
+                },
+                {
+                    "content": '[{"content": "提取出的事实", "confidence": 0.9}]',
+                    "structured_content": [
+                        {"content": "提取出的事实", "confidence": 0.9}
+                    ],
+                    "tokens": 8,
+                    "model": "fact-model",
+                },
+            ]
+        )
+        checker = SequenceChecker(
+            reviews=[
+                {"score": 6.0},
+                {
+                    "is_low_value": True,
+                    "should_prune": True,
+                    "reason": "连续低价值路径",
+                },
+            ]
+        )
+        engine = MCTSEngine(
+            session,
+            questioner=Questioner(llm_client, checker=checker),
+            compressor=Compressor(llm_client, checker=checker),
+            pruner=Pruner(llm_client, checker=checker),
+        )
+
+        result = await engine.run_step()
+
+        assert result is None
+        assert leaf.is_pruned is True
+        assert leaf.prune_reason == "连续低价值路径"
+        assert leaf.interaction.answer == "这是回答内容。"
+        assert llm_client.calls[0]["purpose"] == "generation"
+        assert llm_client.calls[0]["response_contract"] == "text"
+        assert llm_client.calls[1]["purpose"] == "generation"
+        assert llm_client.calls[1]["response_contract"] == "json_array"
+
+    async def test_mcts_normal_chain_uses_generation_contracts(self):
+        session = SessionData(global_goal="测试正常执行链路")
+        root_node = Node(
+            id=session.root_node_id,
+            depth=0,
+            interaction=QAInteraction(question="测试正常执行链路", answer="探索起点"),
+        )
+        leaf = Node(
+            parent_id=root_node.id,
+            depth=1,
+            interaction=QAInteraction(question="下一步该关注什么？", answer=""),
+        )
+        session.add_node(root_node)
+        session.add_node(leaf)
+        root_node.children_ids = [leaf.id]
+
+        llm_client = SequenceLLM(
+            responses=[
+                {
+                    "content": "这是一个正常回答。",
+                    "structured_content": None,
+                    "tokens": 12,
+                    "model": "answer-model",
+                },
+                {
+                    "content": '[{"content": "结构化事实", "confidence": 0.92}]',
+                    "structured_content": [
+                        {"content": "结构化事实", "confidence": 0.92}
+                    ],
+                    "tokens": 9,
+                    "model": "fact-model",
+                },
+                {
+                    "content": '["后续问题是什么？"]',
+                    "structured_content": ["后续问题是什么？"],
+                    "tokens": 11,
+                    "model": "question-model",
+                },
+            ]
+        )
+        checker = SequenceChecker(
+            reviews=[{"score": 6.0}, {"score": 6.0}, {"score": 7.5}]
+        )
+        engine = MCTSEngine(
+            session,
+            questioner=Questioner(llm_client, checker=checker),
+            compressor=Compressor(llm_client, checker=checker),
+            pruner=Pruner(llm_client, checker=checker),
+        )
+
+        result = await engine.run_step()
+
+        assert result is not None
+        assert llm_client.calls[0]["purpose"] == "generation"
+        assert llm_client.calls[0]["response_contract"] == "text"
+        assert llm_client.calls[1]["purpose"] == "generation"
+        assert llm_client.calls[1]["response_contract"] == "json_array"
+        assert llm_client.calls[2]["purpose"] == "generation"
+        assert llm_client.calls[2]["response_contract"] == "json_array"
         assert session.global_facts
-        assert session.global_facts[0].content == "结构化事实"
+        assert any(
+            session.nodes[node_id].interaction.question == "后续问题是什么？"
+            for node_id in leaf.children_ids
+        )
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
 class TestMCTSBackpropagation:
-    """测试 MCTS 回传播机制"""
-
     @pytest.fixture
     def session_with_path(self):
-        """创建有路径的会话"""
         session = SessionData(global_goal="测试")
-
-        # 创建一条深度为 3 的路径
         root = Node(id=session.root_node_id, depth=0)
         session.add_node(root)
 
@@ -319,42 +414,30 @@ class TestMCTSBackpropagation:
         return session
 
     async def test_backpropagation_updates_all_ancestors(self, session_with_path):
-        """测试回传播更新所有祖先节点"""
         engine = MCTSEngine(session_with_path)
-
-        # 获取叶子节点
-        leaf_nodes = [n for n in session_with_path.nodes.values() if not n.children_ids]
-        leaf = leaf_nodes[0]
-
-        # 记录初始访问次数
+        leaf = [
+            node for node in session_with_path.nodes.values() if not node.children_ids
+        ][0]
         initial_visits = {
             node_id: node.state.visit_count
             for node_id, node in session_with_path.nodes.items()
         }
 
-        # 执行回传播
-        value = 7.5
-        engine._backpropagate(leaf.id, value)
+        engine._backpropagate(leaf.id, 7.5)
 
-        # 检查路径上所有节点的访问次数都增加了
         for node_id in session_with_path.nodes:
             current_visits = session_with_path.nodes[node_id].state.visit_count
-            # 路径上的节点访问次数应该增加
             if node_id in [leaf.id, leaf.parent_id, session_with_path.root_node_id]:
                 assert current_visits > initial_visits[node_id]
 
     async def test_backpropagation_value_accumulation(self, session_with_path):
-        """测试回传播价值累积"""
         engine = MCTSEngine(session_with_path)
+        leaf = [
+            node for node in session_with_path.nodes.values() if not node.children_ids
+        ][0]
 
-        leaf_nodes = [n for n in session_with_path.nodes.values() if not n.children_ids]
-        leaf = leaf_nodes[0]
-
-        # 多次回传播
-        values = [5.0, 7.0, 6.0]
-        for value in values:
+        for value in [5.0, 7.0, 6.0]:
             engine._backpropagate(leaf.id, value)
 
-        # 叶子节点的累积价值应该等于所有值的和
-        assert leaf.state.value_sum == sum(values)
-        assert leaf.state.visit_count == len(values)
+        assert leaf.state.value_sum == 18.0
+        assert leaf.state.visit_count == 3

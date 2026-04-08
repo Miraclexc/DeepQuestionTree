@@ -25,7 +25,6 @@ def _build_openai_client(fake_create):
     )
     client.generation_model = "generation-model"
     client.decision_model = "decision-model"
-    client.embedding_model = "embedding-model"
     client.total_tokens_used = 0
     client.total_cost = 0.0
     client.request_count = 0
@@ -47,8 +46,10 @@ async def test_openai_client_uses_json_object_contract_and_parses_payload():
         messages=[{"role": "user", "content": "请返回一个对象"}],
         temperature=0.2,
         response_contract="json_object",
+        purpose="decision",
     )
 
+    assert calls[0]["model"] == "decision-model"
     assert calls[0]["response_format"] == {"type": "json_object"}
     assert response.structured_content == {"score": 7, "reason": "ok"}
 
@@ -68,8 +69,10 @@ async def test_openai_client_uses_json_array_contract_without_response_format():
         messages=[{"role": "user", "content": "请返回一个数组"}],
         temperature=0.8,
         response_contract="json_array",
+        purpose="generation",
     )
 
+    assert calls[0]["model"] == "generation-model"
     assert calls[0]["response_format"] is None
     assert response.structured_content == ["问题1", "问题2"]
 
@@ -86,6 +89,7 @@ async def test_openai_client_raises_when_json_array_contract_returns_object():
         await client.chat_completion(
             messages=[{"role": "user", "content": "请返回一个数组"}],
             response_contract="json_array",
+            purpose="generation",
         )
 
 

@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel
 
 ResponseContract = Literal["text", "json_object", "json_array"]
+Purpose = Literal["generation", "decision"]
 StructuredContent = Dict[str, Any] | List[Any] | None
 
 
@@ -66,6 +67,7 @@ class BaseLLMClient(ABC):
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         response_contract: ResponseContract = "text",
+        purpose: Purpose = "generation",
     ) -> CompletionResponse:
         """
         发送对话请求并获取回复
@@ -75,28 +77,13 @@ class BaseLLMClient(ABC):
             temperature: 采样温度，0.0-2.0
             max_tokens: 最大 token 数
             response_contract: 响应契约，区分文本 / JSON 对象 / JSON 数组
+            purpose: 调用目的，决定使用 generation / decision 模型
 
         Returns:
             CompletionResponse: 包含文本内容和使用统计的对象
 
         Raises:
             StructuredOutputContractError: 结构化输出形状不符合契约时抛出
-            Exception: API 调用失败时抛出异常
-        """
-        pass
-
-    @abstractmethod
-    async def get_embedding(self, text: str) -> List[float]:
-        """
-        获取文本的向量表示
-
-        Args:
-            text: 需要向量化的文本
-
-        Returns:
-            List[float]: 文本的嵌入向量
-
-        Raises:
             Exception: API 调用失败时抛出异常
         """
         pass

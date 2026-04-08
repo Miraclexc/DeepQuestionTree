@@ -58,6 +58,16 @@ uv run pytest tests/e2e/ -v --run-e2e --e2e-provider openai-compatible
 uv run pytest tests/e2e/test_provider_contracts.py -v --run-e2e --e2e-provider openai-compatible
 ```
 
+本次 checker 改造后的推荐验收顺序固定为：
+
+```bash
+uv run pytest tests/unit -v
+uv run pytest tests/integration -v
+uv run pytest tests/ -v
+uv run python run_tests.py quality
+uv run python run_tests.py ci
+```
+
 说明：
 
 - `uv run pytest tests/ -v` 只覆盖 Python 测试，不执行前端 `.ts/.tsx`
@@ -197,4 +207,4 @@ uv run python -m src.backend.main
 - 默认 CI 通过离线契约单测覆盖结构化输出接口，但不直连真实 provider
 - 前端浏览器链路由 [`frontend-testing.md`](./frontend-testing.md) 维护
 - provider 抽象只存在于测试层，不改业务 DTO
-- 默认保持 `EMBEDDING__USE_LOCAL=true`，避免 Deepseek E2E 依赖 embedding API
+- E2E/CI 不再注入任何 `EMBEDDING__*` 变量；真实 provider 仅需 `LLM__GENERATION_MODEL` 与 `LLM__DECISION_MODEL`

@@ -19,13 +19,10 @@ mcts:
   save_interval_steps: 5       # 每运行几步自动保存一次
   parallel_workers: 3          # 并行提问/模拟的 worker 数量
 
-embedding:
-  use_local: true       # 优先使用本地模型
-  model_path: "DMetaSoul/sbert-chinese-general-v2-distill"
-  api_model: "text-embedding-ada-002"  # API 模式下使用的模型
-  similarity_threshold: 0.95  # 重复问题判定的相似度阈值
-  local_files_only: true  # 仅从本地缓存加载，不触发远程下载
-  fallback_mode: "hash"  # 本地模型不可用时降级为离线 hash embedding
+checker:
+  question_history_window: 50   # 核查时最多带入多少条历史问题
+  literal_normalization: true   # 先做零成本字面归一化短路
+  fail_open: true               # 核查模型异常时保留问题/事实
 
 storage:
   data_dir: "data"

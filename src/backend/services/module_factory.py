@@ -4,9 +4,9 @@ from dataclasses import dataclass
 
 from ..config_loader import get_settings
 from ..llm.client_interface import BaseLLMClient
-from ..llm.embedding import get_embedding_manager
 from ..llm.llm_client import OpenAICompatibleClient
 from ..llm.mock_client import MockClient
+from ..modules.checker import Checker
 from ..modules.compressor import Compressor
 from ..modules.integrator import Integrator
 from ..modules.pruner import Pruner
@@ -39,18 +39,12 @@ class RuntimeModuleFactory:
         else:
             logger.info("使用 OpenAI 兼容 LLM 客户端")
             llm_client = OpenAICompatibleClient()
-
-        embedding_manager = get_embedding_manager()
-        embedding_manager.refresh_settings()
-        embedding_manager.set_client(
-            llm_client,
-            prefer_client=effective_use_mock or not settings.embedding.use_local,
-        )
+        checker = Checker(llm_client)
 
         return RuntimeModules(
             llm_client=llm_client,
-            questioner=Questioner(llm_client, embedding_manager),
-            compressor=Compressor(llm_client),
-            pruner=Pruner(llm_client, embedding_manager),
+            questioner=Questioner(llm_client, checker=checker),
+            compressor=Compressor(llm_client, checker=checker),
+            pruner=Pruner(llm_client, checker=checker),
             integrator=Integrator(llm_client),
         )

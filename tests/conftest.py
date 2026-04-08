@@ -12,7 +12,6 @@ from httpx import ASGITransport, AsyncClient
 os.environ.setdefault("SECURITY__API_TOKEN", "test-token")
 os.environ.setdefault("APP__MOCK_LLM", "true")
 os.environ.setdefault("APP__DEBUG", "true")
-os.environ.setdefault("EMBEDDING__USE_LOCAL", "false")
 
 # 添加项目根目录到 Python 路径
 project_root = Path(__file__).parent.parent
@@ -21,7 +20,6 @@ sys.path.insert(0, str(project_root))
 import src.backend.modules.persistence as persistence_module
 from src.backend.config_loader import get_settings, reload_settings
 from src.backend.core.schema import Fact, Node, QAInteraction, SessionData
-from src.backend.llm.embedding import EmbeddingManager
 from src.backend.llm.mock_client import MockClient
 from src.backend.main import app
 from src.backend.services.runtime import ExplorationRuntime
@@ -33,7 +31,6 @@ reload_settings()
 TEST_DEFAULT_ENV = {
     "APP__MOCK_LLM": "true",
     "APP__DEBUG": "true",
-    "EMBEDDING__USE_LOCAL": "false",
     "SECURITY__API_TOKEN": "test-token",
     "STORAGE__SESSION_DB_PATH": "data/sessions/deepquestiontree.sqlite3",
 }
@@ -77,14 +74,6 @@ def test_settings():
 def mock_llm_client():
     """提供 Mock LLM 客户端"""
     return MockClient()
-
-
-@pytest.fixture
-def embedding_manager():
-    """提供 Embedding 管理器"""
-    manager = EmbeddingManager()
-    manager.set_client(MockClient(), prefer_client=True)
-    return manager
 
 
 @pytest.fixture
@@ -210,7 +199,6 @@ def isolated_api_runtime(tmp_path, monkeypatch):
     monkeypatch.setenv("STORAGE__LOGS_DIR", str(logs_dir))
     monkeypatch.setenv("APP__MOCK_LLM", "true")
     monkeypatch.setenv("APP__DEBUG", "true")
-    monkeypatch.setenv("EMBEDDING__USE_LOCAL", "false")
     monkeypatch.setenv("MCTS__PARALLEL_WORKERS", "1")
     monkeypatch.setenv("MCTS__MAX_SIMULATIONS", "100")
     monkeypatch.setenv("MCTS__MAX_DEPTH", "10")

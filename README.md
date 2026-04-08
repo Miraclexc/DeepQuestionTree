@@ -39,6 +39,12 @@ copy .env.example .env
 代码默认值 < config/settings.yaml < 根目录 .env < 进程环境变量
 ```
 
+当前模型分工固定为：
+
+- `LLM__GENERATION_MODEL`：负责回答、提问、摘要和报告生成
+- `LLM__DECISION_MODEL`：唯一的核查模型，负责问题预审、低价值路径复核与事实合并判定
+- `CHECKER__*`：控制历史窗口、字面归一化短路和 fail-open 行为
+
 默认会话与报告持久化文件为：
 
 - `data/sessions/deepquestiontree.sqlite3`

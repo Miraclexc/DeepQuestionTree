@@ -69,7 +69,7 @@ htmlcov/
 .dmypy.json
 dmypy.json
 
-# Model cache (for local embeddings)
+# Model cache
 models/
 .cache/
 

@@ -6,11 +6,11 @@
 from typing import Any, Dict, List, Optional
 
 from ..config_loader import get_settings
-from ..core.schema import Node, QAInteraction, SessionData
+from ..core.schema import Node, SessionData
 from ..llm.client_interface import BaseLLMClient
-from ..llm.embedding import get_embedding_manager
 from ..llm.prompt_manager import get_prompt_manager
 from ..utils.logger import get_logger
+from .checker import Checker
 
 logger = get_logger(__name__)
 
@@ -21,24 +21,22 @@ class Pruner:
     负责路径剪枝决策和生成摘要
     """
 
-    def __init__(
-        self, llm_client: BaseLLMClient, embedding_manager=None, prompt_manager=None
-    ):
+    def __init__(self, llm_client: BaseLLMClient, checker=None, prompt_manager=None):
         """
         初始化剪枝器
 
         Args:
             llm_client: LLM 客户端
-            embedding_manager: 嵌入管理器
+            checker: 核查模块
             prompt_manager: Prompt 管理器
         """
         self.llm = llm_client
-        self.embedding = embedding_manager or get_embedding_manager()
         self.prompts = prompt_manager or get_prompt_manager()
+        self.checker = checker or Checker(llm_client, prompt_manager=self.prompts)
         self.settings = get_settings()
 
     async def should_prune(
-        self, node: Node, session: SessionData
+        self, node: Node, session: SessionData, phase: str = "pre"
     ) -> tuple[bool, Optional[str]]:
         """
         判断节点是否应该被剪枝
@@ -50,34 +48,45 @@ class Pruner:
         Returns:
             tuple[bool, Optional[str]]: (是否剪枝, 剪枝原因)
         """
-        # 1. 检查深度限制
         if node.depth >= self.settings.mcts.max_depth:
             return True, f"达到最大深度限制 ({self.settings.mcts.max_depth})"
 
-        # 2. 检查是否为重复问题
-        if node.interaction and node.interaction.question:
-            # 获取历史问题
-            history_questions = self._get_history_questions(session, node.id)
-            is_duplicate = await self.embedding.check_duplicate(
-                node.interaction.question,
-                history_questions,
-                threshold=self.settings.embedding.similarity_threshold,
-            )
+        if len(session.global_facts) >= 50:
+            return True, "已有足够信息"
 
-            if is_duplicate:
-                return True, "问题重复"
+        if not node.interaction or not node.interaction.question:
+            return False, None
 
-        # 3. 检查连续低价值
-        if await self._is_low_value_path(node, session):
+        path_nodes = self._get_path_to_root(node, session)
+        parent_question = (
+            path_nodes[-2].interaction.question
+            if len(path_nodes) > 1 and path_nodes[-2].interaction
+            else "初始问题"
+        )
+        review = await self.checker.review_question(
+            question=node.interaction.question,
+            goal=session.global_goal,
+            history_questions=self._get_history_questions(session, node.id),
+            parent_question=parent_question,
+            known_facts=session.global_facts,
+            current_answer=node.interaction.answer,
+            path_questions=[
+                item.interaction.question
+                for item in path_nodes
+                if item.interaction and item.interaction.question
+            ],
+            recent_values=[item.state.average_value for item in path_nodes[-3:]],
+            stage="post" if phase == "post" else "pre",
+        )
+
+        if phase == "post" and review.is_low_value:
             return True, "连续低价值路径"
 
-        # 4. 检查是否偏离目标
-        if await self._is_off_topic(node, session):
-            return True, "偏离主题"
-
-        # 5. 检查是否已有足够信息
-        if len(session.global_facts) >= 50:  # 可配置的阈值
-            return True, "已有足够信息"
+        if phase != "post":
+            if review.is_duplicate:
+                return True, "问题重复"
+            if review.is_off_topic:
+                return True, "偏离主题"
 
         return False, None
 
@@ -127,7 +136,9 @@ class Pruner:
             # 调用 LLM 生成摘要
             messages = [{"role": "user", "content": prompt}]
             summary = await self.llm.chat_completion(
-                messages=messages, temperature=0.3  # 降低温度以获得更稳定的概括
+                messages=messages,
+                temperature=0.3,
+                purpose="generation",
             )
 
             return summary.content.strip()
@@ -138,39 +149,6 @@ class Pruner:
             return (
                 f"该路径包含 {len(path_nodes)} 个节点，探索了 {leaf_node.depth} 层深度"
             )
-
-    async def _is_low_value_path(self, node: Node, session: SessionData) -> bool:
-        """
-        检查是否为低价值路径
-        """
-        # 获取路径上的节点
-        path_nodes = self._get_path_to_root(node, session)
-
-        # 检查最近 N 个节点的平均价值
-        recent_nodes = path_nodes[-3:]  # 最近3个节点
-        if len(recent_nodes) < 3:
-            return False
-
-        avg_value = sum(n.state.average_value for n in recent_nodes) / len(recent_nodes)
-
-        # 如果平均价值低于阈值，认为是低价值路径
-        return avg_value < 2.0  # 可配置的阈值
-
-    async def _is_off_topic(self, node: Node, session: SessionData) -> bool:
-        """
-        检查是否偏离主题
-        """
-        if not node.interaction or not session.global_goal:
-            return False
-
-        # 计算问题与目标的相似度
-        similarity = self.embedding.cosine_similarity(
-            await self.embedding.get_embedding(node.interaction.question),
-            await self.embedding.get_embedding(session.global_goal),
-        )
-
-        # 如果相似度太低，认为偏离主题
-        return similarity < 0.2  # 可配置的阈值
 
     def _get_history_questions(
         self, session: SessionData, exclude_node_id: str

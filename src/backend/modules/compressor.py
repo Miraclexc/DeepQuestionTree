@@ -3,13 +3,15 @@
 负责上下文压缩和事实提取
 """
 
+import re
 from typing import Any, Dict, List
 
+from ..config_loader import get_settings
 from ..core.schema import Fact, QAInteraction, SessionData
 from ..llm.client_interface import BaseLLMClient
-from ..llm.embedding import get_embedding_manager
 from ..llm.prompt_manager import get_prompt_manager
 from ..utils.logger import get_logger
+from .checker import Checker, FactDedupePlan
 
 logger = get_logger(__name__)
 
@@ -20,7 +22,7 @@ class Compressor:
     负责从回答中提取事实和压缩上下文
     """
 
-    def __init__(self, llm_client: BaseLLMClient, prompt_manager=None):
+    def __init__(self, llm_client: BaseLLMClient, checker=None, prompt_manager=None):
         """
         初始化压缩器
 
@@ -30,7 +32,8 @@ class Compressor:
         """
         self.llm = llm_client
         self.prompts = prompt_manager or get_prompt_manager()
-        self.embedding_manager = get_embedding_manager()
+        self.checker = checker or Checker(llm_client, prompt_manager=self.prompts)
+        self.settings = get_settings()
 
     async def extract_facts(
         self, text: str, source_node_id: str
@@ -55,6 +58,7 @@ class Compressor:
                 messages=messages,
                 temperature=0.2,
                 response_contract="json_array",  # 低温度保证准确性
+                purpose="generation",
             )
 
             # 解析响应
@@ -109,7 +113,9 @@ class Compressor:
             # 调用 LLM 压缩
             messages = [{"role": "user", "content": prompt}]
             compressed_response = await self.llm.chat_completion(
-                messages=messages, temperature=0.3
+                messages=messages,
+                temperature=0.3,
+                purpose="generation",
             )
 
             return compressed_response.content.strip()
@@ -136,48 +142,44 @@ class Compressor:
         Returns:
             List[Fact]: 合并后的去重事实列表
         """
+        del similarity_threshold
+
         merged_facts = existing_facts.copy()
+        if not new_facts:
+            return merged_facts
+
+        unresolved_new_facts: list[Fact] = []
+        normalized_index = {
+            self._normalize_text(fact.content): fact
+            for fact in merged_facts
+            if self._normalize_text(fact.content)
+        }
 
         for new_fact in new_facts:
-            # 检查是否与已有事实重复
-            is_duplicate = False
-            max_similarity = 0.0
-            most_similar_fact: Fact | None = None
+            normalized = self._normalize_text(new_fact.content)
+            existing_fact = normalized_index.get(normalized) if normalized else None
+            if existing_fact is None:
+                unresolved_new_facts.append(new_fact)
+                continue
 
-            # 获取新事实的嵌入向量
-            new_fact_emb = await self.embedding_manager.get_embedding(new_fact.content)
-
-            # 计算与所有已有事实的相似度
-            for existing_fact in merged_facts:
-                existing_fact_emb = await self.embedding_manager.get_embedding(
-                    existing_fact.content
-                )
-                similarity = self.embedding_manager.cosine_similarity(
-                    new_fact_emb, existing_fact_emb
-                )
-
-                if similarity > max_similarity:
-                    max_similarity = similarity
-                    most_similar_fact = existing_fact
-
-            # 判断是否重复
-            if max_similarity >= similarity_threshold and most_similar_fact is not None:
-                is_duplicate = True
-                # 保留置信度更高的
-                if new_fact.confidence > most_similar_fact.confidence:
-                    merged_facts.remove(most_similar_fact)
-                    merged_facts.append(new_fact)
-                    logger.debug(f"替换事实（置信度更高）: {new_fact.content[:50]}...")
-                else:
-                    logger.debug(
-                        f"跳过重复事实（相似度: {max_similarity:.2f}）: {new_fact.content[:50]}..."
-                    )
-
-            if not is_duplicate:
+            if new_fact.confidence > existing_fact.confidence:
+                merged_facts.remove(existing_fact)
                 merged_facts.append(new_fact)
-                logger.debug(f"添加新事实: {new_fact.content[:50]}...")
+                normalized_index[normalized] = new_fact
+                logger.debug("替换字面重复事实: %s", new_fact.content[:50])
+            else:
+                logger.debug("跳过字面重复事实: %s", new_fact.content[:50])
 
-        return merged_facts
+        if not unresolved_new_facts:
+            return merged_facts
+
+        try:
+            plan = await self.checker.dedupe_facts(merged_facts, unresolved_new_facts)
+        except Exception as exc:
+            logger.error("事实去重核查失败，启用 fail-open: %s", exc)
+            plan = FactDedupePlan(keep_new=[fact.id for fact in unresolved_new_facts])
+
+        return self._apply_dedupe_plan(merged_facts, unresolved_new_facts, plan)
 
     def _extract_facts_manually(self, text: str, source_node_id: str) -> List[Fact]:
         """
@@ -202,6 +204,50 @@ class Compressor:
 
         # 最多返回 5 个事实
         return facts[:5]
+
+    def _normalize_text(self, text: str) -> str:
+        if hasattr(self.checker, "normalize_text"):
+            return self.checker.normalize_text(text)
+        base = text.strip().lower()
+        if not self.settings.checker.literal_normalization:
+            return base
+        return re.sub(r"[\s\W_]+", "", base)
+
+    def _apply_dedupe_plan(
+        self,
+        merged_facts: list[Fact],
+        unresolved_new_facts: list[Fact],
+        plan: FactDedupePlan,
+    ) -> list[Fact]:
+        new_fact_map = {fact.id: fact for fact in unresolved_new_facts}
+        existing_fact_map = {fact.id: fact for fact in merged_facts}
+        consumed_new_ids: set[str] = set()
+
+        for new_id, existing_id in plan.replace_existing.items():
+            new_fact = new_fact_map.get(new_id)
+            existing_fact = existing_fact_map.get(existing_id)
+            if new_fact is None or existing_fact is None:
+                continue
+            merged_facts.remove(existing_fact)
+            merged_facts.append(new_fact)
+            consumed_new_ids.add(new_id)
+
+        for new_id in plan.discard_new:
+            if new_id in new_fact_map:
+                consumed_new_ids.add(new_id)
+
+        for new_id in plan.keep_new:
+            new_fact = new_fact_map.get(new_id)
+            if new_fact is None or new_id in consumed_new_ids:
+                continue
+            merged_facts.append(new_fact)
+            consumed_new_ids.add(new_id)
+
+        for new_fact in unresolved_new_facts:
+            if new_fact.id not in consumed_new_ids:
+                merged_facts.append(new_fact)
+
+        return merged_facts
 
     def summarize_interactions(
         self, interactions: List[QAInteraction], max_facts: int = 20

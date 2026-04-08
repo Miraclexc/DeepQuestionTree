@@ -3,14 +3,15 @@
 负责生成候选问题、评估问题价值、检测重复问题
 """
 
-import json
-from typing import Any, Dict, List
+import re
+from typing import List
 
-from ..core.schema import Fact, SessionData
+from ..config_loader import get_settings
+from ..core.schema import Fact
 from ..llm.client_interface import BaseLLMClient
-from ..llm.embedding import get_embedding_manager
 from ..llm.prompt_manager import get_prompt_manager
 from ..utils.logger import get_logger
+from .checker import Checker
 
 logger = get_logger(__name__)
 
@@ -21,24 +22,22 @@ class Questioner:
     负责问题生成、价值评估和重复检测
     """
 
-    def __init__(
-        self, llm_client: BaseLLMClient, embedding_manager=None, prompt_manager=None
-    ):
+    def __init__(self, llm_client: BaseLLMClient, checker=None, prompt_manager=None):
         """
         初始化提问者
 
         Args:
             llm_client: LLM 客户端
-            embedding_manager: 嵌入管理器
+            checker: 核查模块
             prompt_manager: Prompt 管理器
         """
         self.llm = llm_client
-        self.embedding = embedding_manager or get_embedding_manager()
         self.prompts = prompt_manager or get_prompt_manager()
+        self.checker = checker or Checker(llm_client, prompt_manager=self.prompts)
+        self.settings = get_settings()
 
         # 维护历史问题库（用于去重）
         self.history_questions: List[str] = []
-        self.history_embeddings: List[List[float]] = []
 
     async def generate_candidates(
         self,
@@ -86,6 +85,7 @@ class Questioner:
                 messages=messages,
                 temperature=0.8,
                 response_contract="json_array",  # 较高的创造性
+                purpose="generation",
             )
 
             # 解析响应
@@ -126,34 +126,15 @@ class Questioner:
             float: 评估分数 (0.0 - 10.0)
         """
         try:
-            # 准备已知事实文本
-            if known_facts:
-                facts_text = "\n".join(
-                    [f"- {f.content}" for f in known_facts[-20:]]
-                )  # 限制数量
-            else:
-                facts_text = "暂无已知事实"
-
-            # 渲染评估 Prompt
-            prompt = self.prompts.render(
-                "evaluate_question",
+            review = await self.checker.review_question(
                 question=question,
-                known_facts=facts_text,
                 goal=goal,
                 parent_question=parent_question,
+                history_questions=self.history_questions,
+                known_facts=known_facts,
+                stage="score",
             )
-
-            # 调用 LLM 评估
-            messages = [{"role": "user", "content": prompt}]
-            response = await self.llm.chat_completion(
-                messages=messages,
-                temperature=0.3,
-                response_contract="text",  # 较低的随机性
-            )
-
-            # 解析分数 (使用 response.content)
-            score = self._extract_score(response.content)
-            return max(0.0, min(10.0, float(score)))
+            return max(0.0, min(10.0, float(review.score)))
 
         except Exception as e:
             logger.error(f"评估问题价值失败: {e}")
@@ -190,7 +171,10 @@ class Questioner:
 
             # 使用 LLM 客户端
             response = await self.llm.chat_completion(
-                messages=messages, temperature=0.7, response_contract="text"
+                messages=messages,
+                temperature=0.7,
+                response_contract="text",
+                purpose="generation",
             )
 
             return response.content, response.tokens, response.model
@@ -214,21 +198,24 @@ class Questioner:
         Returns:
             bool: 是否重复
         """
-        if threshold is None:
-            from ..config_loader import get_settings
+        del threshold
 
-            settings = get_settings()
-            threshold = settings.embedding.similarity_threshold
+        question = question.strip()
+        if not question:
+            return False
 
         if not self.history_questions:
             # 第一个问题，记录并返回不重复
             await self._add_to_history(question)
             return False
 
-        # 检查与历史问题的相似度
-        is_duplicate = await self.embedding.check_duplicate(
-            question, self.history_questions, threshold
+        review = await self.checker.review_question(
+            question=question,
+            goal="",
+            history_questions=self.history_questions,
+            stage="pre",
         )
+        is_duplicate = review.is_duplicate
 
         if not is_duplicate:
             # 不重复，加入历史
@@ -239,19 +226,12 @@ class Questioner:
     async def _add_to_history(self, question: str) -> None:
         """添加问题到历史记录"""
         self.history_questions.append(question)
-        emb = await self.embedding.get_embedding(question)
-        self.history_embeddings.append(emb)
-
-        # 限制历史记录数量
-        max_history = 1000
+        max_history = self.settings.checker.question_history_window
         if len(self.history_questions) > max_history:
             self.history_questions = self.history_questions[-max_history:]
-            self.history_embeddings = self.history_embeddings[-max_history:]
 
     def _extract_questions_from_text(self, text: str) -> List[str]:
         """从文本中提取问题列表"""
-        import re
-
         # 尝试匹配引号或编号列表中的问题
         questions = []
 
@@ -273,20 +253,19 @@ class Questioner:
 
     def _extract_score(self, response: str) -> float:
         """从响应中提取分数"""
+        import json
         import re
 
-        # 尝试匹配数字
-        numbers = re.findall(r"\d+(?:\.\d+)?", response)
-        if numbers:
-            return float(numbers[0])
-
-        # 尝试解析 JSON
         try:
             data = json.loads(response)
             if isinstance(data, dict) and "score" in data:
                 return float(data["score"])
-        except:
+        except Exception:
             pass
+
+        numbers = re.findall(r"\d+(?:\.\d+)?", response)
+        if numbers:
+            return float(numbers[0])
 
         # 默认分数
         return 5.0

@@ -1,6 +1,6 @@
 # Frontend Testing
 
-> Last Updated: 2026-04-05
+> Last Updated: 2026-04-07
 >
 > 本页唯一负责：维护前端专属测试布局、Node 工具链命令、Vitest / MSW / Playwright 细节与浏览器 smoke 约束。
 
@@ -123,7 +123,6 @@ uv run python -m src.backend.main
 - `APP__API_PORT=<playwright-backend-port>`
 - `APP__FRONTEND_HOST=http://127.0.0.1`
 - `APP__FRONTEND_PORT=<playwright-frontend-port>`
-- `EMBEDDING__USE_LOCAL=false`
 - `MCTS__MAX_SIMULATIONS=2`
 - `MCTS__PARALLEL_WORKERS=1`
 - `SECURITY__API_TOKEN=test-token`
@@ -144,6 +143,11 @@ npm run build && npm run start -- --hostname 127.0.0.1 --port <playwright-fronte
 - `NEXT_PUBLIC_API_HOST=http://127.0.0.1`
 - `NEXT_PUBLIC_API_PORT=<playwright-backend-port>`
 - `NEXT_PUBLIC_API_TOKEN=test-token`
+
+补充约束：
+
+- Playwright 不再注入任何 `EMBEDDING__*` 环境变量
+- 当 provider 为真实模型时，后端核查链路统一复用 `LLM__DECISION_MODEL`
 
 ## 6. Current Boundaries
 

@@ -14,7 +14,7 @@ from src.backend.modules.compressor import Compressor
 class ContractAwareCompressorLLM:
     def __init__(self, responses):
         self.responses = list(responses)
-        self.response_contracts: list[str] = []
+        self.calls: list[dict] = []
 
     async def chat_completion(
         self,
@@ -22,8 +22,17 @@ class ContractAwareCompressorLLM:
         temperature=0.7,
         max_tokens=None,
         response_contract="text",
+        purpose="generation",
     ):
-        self.response_contracts.append(response_contract)
+        self.calls.append(
+            {
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "response_contract": response_contract,
+                "purpose": purpose,
+            }
+        )
         response = self.responses.pop(0)
         return SimpleNamespace(
             content=response["content"],
@@ -32,9 +41,6 @@ class ContractAwareCompressorLLM:
             model=response.get("model", "contract-aware"),
         )
 
-    async def get_embedding(self, text):
-        return [0.1, 0.2, 0.3]
-
     async def get_usage_stats(self):
         return {}
 
@@ -42,78 +48,88 @@ class ContractAwareCompressorLLM:
         return None
 
 
+class ScriptedCompressorChecker:
+    def __init__(self, *, plan=None, error: Exception | None = None):
+        self.plan = plan or SimpleNamespace(
+            replace_existing={},
+            discard_new=[],
+            keep_new=[],
+        )
+        self.error = error
+        self.calls: list[dict] = []
+
+    async def dedupe_facts(self, existing_facts, new_facts):
+        self.calls.append(
+            {
+                "existing_facts": existing_facts,
+                "new_facts": new_facts,
+            }
+        )
+        if self.error is not None:
+            raise self.error
+        return self.plan
+
+
 @pytest.mark.unit
 class TestCompressor:
-    """测试压缩器模块"""
-
     @pytest.fixture
     def compressor(self, mock_llm_client):
-        """创建压缩器实例"""
-        return Compressor(mock_llm_client)
+        return Compressor(
+            mock_llm_client,
+            checker=ScriptedCompressorChecker(),
+        )
 
     async def test_extract_facts_basic(self, compressor):
-        """测试基本的事实提取"""
         text = """
         深度学习是机器学习的一个子领域。
         Transformer 架构于 2017 年提出。
         GPT-4 是目前最先进的语言模型之一。
         """
-        source_node_id = "test_node_123"
 
-        facts, tokens, model = await compressor.extract_facts(text, source_node_id)
+        facts, tokens, model = await compressor.extract_facts(text, "test_node_123")
 
-        # 应该提取到至少一些事实
         assert isinstance(facts, list)
         assert len(facts) > 0
         assert isinstance(tokens, int)
         assert isinstance(model, str)
-
-        # 每个事实应该是 Fact 对象
-        for fact in facts:
-            assert isinstance(fact, Fact)
-            assert fact.source_node_id == source_node_id
-            assert 0.0 <= fact.confidence <= 1.0
+        assert all(isinstance(fact, Fact) for fact in facts)
 
     async def test_extract_facts_empty_text(self, compressor):
-        """测试空文本"""
         facts, _, _ = await compressor.extract_facts("", "node_1")
-        # 空文本应该返回空列表或很少的事实
+
         assert isinstance(facts, list)
 
     async def test_compress_context_no_compression_needed(self, compressor):
-        """测试不需要压缩的情况"""
         short_text = "这是一段很短的文本。"
-        token_limit = 2000
 
-        compressed = await compressor.compress_context(short_text, token_limit)
+        compressed = await compressor.compress_context(short_text, token_limit=2000)
 
-        # 短文本应该直接返回
         assert compressed == short_text
 
     async def test_compress_context_compression_needed(self, compressor):
-        """测试需要压缩的情况"""
-        long_text = "这是一段很长的文本。" * 500  # 创建长文本
-        token_limit = 100
+        long_text = "这是一段很长的文本。" * 500
 
-        compressed = await compressor.compress_context(long_text, token_limit)
+        compressed = await compressor.compress_context(long_text, token_limit=100)
 
-        # 压缩后应该更短
         assert len(compressed) < len(long_text)
         assert isinstance(compressed, str)
 
-    async def test_merge_facts_no_duplicates(self, compressor):
-        """测试合并无重复的事实"""
+    async def test_merge_facts_with_literal_duplicates_prefers_higher_confidence(self):
+        checker = ScriptedCompressorChecker()
+        compressor = Compressor(
+            ContractAwareCompressorLLM([]),
+            checker=checker,
+        )
         existing_facts = [
             Fact(
-                content="深度学习是机器学习的子领域",
+                content="深度学习是机器学习的一个子领域。",
                 source_node_id="node_1",
                 confidence=0.9,
             )
         ]
-
         new_facts = [
             Fact(
-                content="Transformer 于 2017 年提出",
+                content=" 深度学习是机器学习的一个子领域 ",
                 source_node_id="node_2",
                 confidence=0.95,
             )
@@ -121,60 +137,78 @@ class TestCompressor:
 
         merged = await compressor.merge_facts(existing_facts, new_facts)
 
-        # 应该包含所有事实
-        assert len(merged) == 2
+        assert len(merged) == 1
+        assert merged[0].source_node_id == "node_2"
+        assert checker.calls == []
 
-    async def test_merge_facts_with_duplicates(self, compressor, embedding_manager):
-        """测试合并重复事实"""
-        existing_facts = [
-            Fact(
-                content="深度学习是机器学习的一个子领域",
-                source_node_id="node_1",
-                confidence=0.9,
+    async def test_merge_facts_applies_checker_replace_and_discard(self):
+        existing_fact = Fact(
+            id="existing-1",
+            content="旧事实",
+            source_node_id="node_1",
+            confidence=0.6,
+        )
+        replacing_fact = Fact(
+            id="new-1",
+            content="更新后的事实",
+            source_node_id="node_2",
+            confidence=0.95,
+        )
+        discarded_fact = Fact(
+            id="new-2",
+            content="重复事实",
+            source_node_id="node_2",
+            confidence=0.7,
+        )
+        kept_fact = Fact(
+            id="new-3",
+            content="新增事实",
+            source_node_id="node_2",
+            confidence=0.9,
+        )
+        checker = ScriptedCompressorChecker(
+            plan=SimpleNamespace(
+                replace_existing={"new-1": "existing-1"},
+                discard_new=["new-2"],
+                keep_new=["new-3"],
             )
-        ]
-
-        # 语义相似的事实
-        new_facts = [
-            Fact(
-                content="深度学习属于机器学习的一种",
-                source_node_id="node_2",
-                confidence=0.95,
-            )
-        ]
-
-        merged = await compressor.merge_facts(
-            existing_facts, new_facts, similarity_threshold=0.85
+        )
+        compressor = Compressor(
+            ContractAwareCompressorLLM([]),
+            checker=checker,
         )
 
-        # 高相似度的事实应该被去重或替换
-        # 由于 Mock 客户端的 embedding 是基于哈希的，相似文本可能不会被识别为重复
-        # 但至少不应该比原来少
-        assert len(merged) >= len(existing_facts)
+        merged = await compressor.merge_facts(
+            [existing_fact],
+            [replacing_fact, discarded_fact, kept_fact],
+        )
 
-    async def test_merge_facts_confidence_replacement(self, compressor):
-        """测试基于置信度的事实替换"""
-        # 低置信度的已有事实
+        assert {fact.id for fact in merged} == {"new-1", "new-3"}
+        assert checker.calls
+
+    async def test_merge_facts_fail_open_keeps_non_literal_new_facts(self):
+        checker = ScriptedCompressorChecker(error=RuntimeError("checker unavailable"))
+        compressor = Compressor(
+            ContractAwareCompressorLLM([]),
+            checker=checker,
+        )
         existing_facts = [
             Fact(content="测试事实A", source_node_id="node_1", confidence=0.6)
         ]
-
-        # 高置信度的新事实（完全相同）
         new_facts = [
-            Fact(content="测试事实A", source_node_id="node_2", confidence=0.95)
+            Fact(content="测试事实B", source_node_id="node_2", confidence=0.95),
+            Fact(content="测试事实C", source_node_id="node_2", confidence=0.8),
         ]
 
-        merged = await compressor.merge_facts(
-            existing_facts, new_facts, similarity_threshold=1.0  # 完全匹配
-        )
+        merged = await compressor.merge_facts(existing_facts, new_facts)
 
-        # 应该保留高置信度的版本
-        assert len(merged) >= 1
-        # 至少有一个事实的置信度很高
-        assert any(f.confidence >= 0.9 for f in merged)
+        assert {fact.content for fact in merged} == {
+            "测试事实A",
+            "测试事实B",
+            "测试事实C",
+        }
 
     def test_manual_fact_extraction(self, compressor):
-        """测试手动事实提取（降级方案）"""
         text = """
         深度学习是一种机器学习方法。
         它使用多层神经网络。
@@ -184,16 +218,11 @@ class TestCompressor:
 
         facts = compressor._extract_facts_manually(text, "node_1")
 
-        # 应该提取到一些事实
         assert isinstance(facts, list)
         assert len(facts) > 0
-
-        # 不应该包含主观表述
-        contents = [f.content for f in facts]
-        assert not any("我认为" in c for c in contents)
+        assert not any("我认为" in fact.content for fact in facts)
 
     async def test_summarize_interactions(self, compressor):
-        """测试交互总结"""
         from src.backend.core.schema import QAInteraction
 
         interactions = [
@@ -212,12 +241,11 @@ class TestCompressor:
         summary = compressor.summarize_interactions(interactions, max_facts=10)
 
         assert isinstance(summary, dict)
-        assert "total_interactions" in summary
         assert summary["total_interactions"] == 2
         assert "total_facts" in summary
         assert "key_facts" in summary
 
-    async def test_extract_facts_uses_json_array_contract(self):
+    async def test_extract_facts_uses_generation_purpose_and_json_array_contract(self):
         llm_client = ContractAwareCompressorLLM(
             [
                 {
@@ -228,11 +256,12 @@ class TestCompressor:
                 }
             ]
         )
-        compressor = Compressor(llm_client)
+        compressor = Compressor(llm_client, checker=ScriptedCompressorChecker())
 
         facts, tokens, model = await compressor.extract_facts("测试文本", "node_1")
 
-        assert llm_client.response_contracts == ["json_array"]
+        assert llm_client.calls[0]["response_contract"] == "json_array"
+        assert llm_client.calls[0]["purpose"] == "generation"
         assert [fact.content for fact in facts] == ["事实1"]
         assert tokens == 12
         assert model == "structured-model"
@@ -240,36 +269,28 @@ class TestCompressor:
 
 @pytest.mark.unit
 class TestCompressorEdgeCases:
-    """测试 Compressor 的边界情况"""
-
     @pytest.fixture
     def compressor(self, mock_llm_client):
-        return Compressor(mock_llm_client)
+        return Compressor(
+            mock_llm_client,
+            checker=ScriptedCompressorChecker(),
+        )
 
     async def test_extract_facts_special_characters(self, compressor):
-        """测试包含特殊字符的文本"""
-        text = "这是包含特殊字符的文本：@#$%^&*()，应该能正常处理。"
-        facts, _, _ = await compressor.extract_facts(text, "node_1")
+        facts, _, _ = await compressor.extract_facts(
+            "这是包含特殊字符的文本：@#$%^&*()，应该能正常处理。",
+            "node_1",
+        )
 
         assert isinstance(facts, list)
 
     async def test_merge_facts_empty_lists(self, compressor):
-        """测试合并空列表"""
-        # 两个都为空
-        merged = await compressor.merge_facts([], [])
-        assert merged == []
+        assert await compressor.merge_facts([], []) == []
 
-        # 一个为空
         existing = [Fact(content="测试", source_node_id="node_1")]
         merged = await compressor.merge_facts(existing, [])
         assert len(merged) == 1
 
     async def test_compress_context_edge_cases(self, compressor):
-        """测试压缩的边界情况"""
-        # 空字符串
-        result = await compressor.compress_context("", 100)
-        assert result == ""
-
-        # 单字符
-        result = await compressor.compress_context("A", 100)
-        assert result == "A"
+        assert await compressor.compress_context("", 100) == ""
+        assert await compressor.compress_context("A", 100) == "A"

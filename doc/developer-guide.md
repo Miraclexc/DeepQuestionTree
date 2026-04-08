@@ -71,8 +71,8 @@ npm run dev
 | `src/backend/api/` | 路由、DTO、鉴权依赖 |
 | `src/backend/services/` | 运行时门面、应用服务、协调器、串行 commit 通道、仓储边界 |
 | `src/backend/core/` | 领域对象、MCTS engine、snapshot/proposal 并发提交流程 |
-| `src/backend/modules/` | questioner、compressor、pruner、integrator、persistence |
-| `src/backend/llm/` | LLM client、embedding、prompt manager、mock client |
+| `src/backend/modules/` | checker、questioner、compressor、pruner、integrator、persistence |
+| `src/backend/llm/` | LLM client、基于 `purpose` 的 generation/decision 模型路由、prompt manager、mock client |
 | `config/` | 默认配置与 prompts |
 
 ### 3.2 Frontend
@@ -152,13 +152,17 @@ npm run dev
 
 同步检查以下位置：
 
+- [`../src/backend/modules/checker.py`](../src/backend/modules/checker.py)
 - [`../src/backend/llm/client_interface.py`](../src/backend/llm/client_interface.py)
 - [`../src/backend/llm/llm_client.py`](../src/backend/llm/llm_client.py)
+- [`../config/settings.yaml`](../config/settings.yaml)
+- [`../.env.example`](../.env.example)
 - [`../config/prompts.yaml`](../config/prompts.yaml)
 - [`./llm-structured-output-contract.md`](./llm-structured-output-contract.md)
 - `tests/unit/test_llm_client_contracts.py`
+- `tests/unit/test_checker.py`
 
-如果结构化输出的顶层形状、fallback 或 provider 校验方式发生变化，必须同时更新契约文档和对应测试。
+如果结构化输出的顶层形状、checker 决策字段、模型路由或 fallback 行为发生变化，必须同时更新契约文档和对应测试。
 
 ## 6. Quality And Validation
 

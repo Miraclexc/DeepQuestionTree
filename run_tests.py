@@ -136,7 +136,6 @@ def build_frontend_e2e_environment(
 
     if selected_provider == "mock":
         env["PLAYWRIGHT_BACKEND_MOCK_LLM"] = "true"
-        env["EMBEDDING__USE_LOCAL"] = "false"
         env["PLAYWRIGHT_ASSERT_TIMEOUT_MS"] = "30000"
         env["PLAYWRIGHT_TEST_TIMEOUT_MS"] = "90000"
         env["PLAYWRIGHT_BACKEND_TIMEOUT_MS"] = "180000"
@@ -163,9 +162,6 @@ def build_frontend_e2e_environment(
             "E2E_DEEPSEEK_DECISION_MODEL",
             env["PLAYWRIGHT_E2E_DEEPSEEK_GENERATION_MODEL"],
         )
-        env["EMBEDDING__USE_LOCAL"] = "true"
-        env["EMBEDDING__LOCAL_FILES_ONLY"] = "true"
-        env["EMBEDDING__FALLBACK_MODE"] = "hash"
         env["PLAYWRIGHT_ASSERT_TIMEOUT_MS"] = "120000"
         env["PLAYWRIGHT_TEST_TIMEOUT_MS"] = "300000"
         env["PLAYWRIGHT_BACKEND_TIMEOUT_MS"] = "300000"

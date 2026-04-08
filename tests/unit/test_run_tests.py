@@ -132,7 +132,7 @@ def test_build_frontend_e2e_environment_defaults_to_mock_backend(tmp_path):
     assert env["PATH"] == "test-path"
     assert env["PLAYWRIGHT_E2E_PROVIDER"] == "mock"
     assert env["PLAYWRIGHT_BACKEND_MOCK_LLM"] == "true"
-    assert env["EMBEDDING__USE_LOCAL"] == "false"
+    assert "EMBEDDING__USE_LOCAL" not in env
 
 
 def test_build_frontend_e2e_environment_maps_deepseek_provider(tmp_path):
@@ -151,5 +151,6 @@ def test_build_frontend_e2e_environment_maps_deepseek_provider(tmp_path):
     assert env["PLAYWRIGHT_E2E_DEEPSEEK_BASE_URL"] == "https://api.deepseek.com/v1"
     assert env["PLAYWRIGHT_E2E_DEEPSEEK_GENERATION_MODEL"] == "deepseek-chat"
     assert env["PLAYWRIGHT_E2E_DEEPSEEK_DECISION_MODEL"] == "deepseek-chat"
-    assert env["EMBEDDING__LOCAL_FILES_ONLY"] == "true"
-    assert env["EMBEDDING__FALLBACK_MODE"] == "hash"
+    assert "EMBEDDING__USE_LOCAL" not in env
+    assert "EMBEDDING__LOCAL_FILES_ONLY" not in env
+    assert "EMBEDDING__FALLBACK_MODE" not in env

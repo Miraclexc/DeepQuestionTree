@@ -6,6 +6,7 @@ MCTS 核心引擎
 from __future__ import annotations
 
 import asyncio
+import inspect
 import math
 import uuid
 from dataclasses import dataclass
@@ -158,19 +159,38 @@ class MCTSEngine:
         if leaf_node is None:
             return None
 
-        await self._process_node(session, leaf_node)
-
         if self.pruner:
-            should_prune, reason = await self.pruner.should_prune(leaf_node, session)
+            should_prune, reason = await self._should_prune(
+                leaf_node,
+                session,
+                phase="pre",
+            )
             if should_prune:
                 prune_reason = reason or "未命名剪枝原因"
                 logger.info("Pruning node %s: %s", leaf_node.id, prune_reason)
                 leaf_node.mark_pruned(prune_reason)
-                if leaf_node.interaction:
-                    leaf_node.interaction.summary = await self.pruner.summarize_path(
-                        leaf_node, session
-                    )
-                    leaf_node.touch(bump_revision=True)
+                return self._build_proposal(
+                    snapshot=snapshot,
+                    session=session,
+                    created_node_ids=[],
+                    backprop_start_id=leaf_node.id,
+                    value=0.0,
+                    simulation_applied=False,
+                    new_node_id=None,
+                )
+
+        await self._process_node(session, leaf_node)
+
+        if self.pruner:
+            should_prune, reason = await self._should_prune(
+                leaf_node,
+                session,
+                phase="post",
+            )
+            if should_prune:
+                prune_reason = reason or "未命名剪枝原因"
+                logger.info("Pruning node %s: %s", leaf_node.id, prune_reason)
+                leaf_node.mark_pruned(prune_reason)
                 return self._build_proposal(
                     snapshot=snapshot,
                     session=session,
@@ -671,3 +691,24 @@ class MCTSEngine:
         live_node.node_revision = prepared_node.node_revision
         live_node.created_at = prepared_node.created_at
         live_node.updated_at = prepared_node.updated_at
+
+    async def _should_prune(
+        self,
+        node: Node,
+        session: SessionData,
+        *,
+        phase: str,
+    ) -> tuple[bool, str | None]:
+        if self.pruner is None:
+            return False, None
+
+        should_prune = self.pruner.should_prune
+        has_phase = False
+        try:
+            has_phase = "phase" in inspect.signature(should_prune).parameters
+        except (TypeError, ValueError):
+            has_phase = False
+
+        if has_phase:
+            return await should_prune(node, session, phase=phase)
+        return await should_prune(node, session)
