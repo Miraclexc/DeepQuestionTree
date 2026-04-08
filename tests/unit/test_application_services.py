@@ -8,6 +8,7 @@ import pytest
 
 from src.backend.core.schema import Node, QAInteraction, SessionData, SessionStatus
 from src.backend.services.configuration_service import ConfigurationService
+from src.backend.services.coordinator import RuntimeCoordinator
 from src.backend.services.errors import NotFoundError
 from src.backend.services.report_service import ReportService
 from src.backend.services.session_command_service import SessionCommandService
@@ -154,6 +155,14 @@ class FakeExplodingIntegrator:
         raise self.error
 
 
+class RecordingRepository:
+    def __init__(self) -> None:
+        self.saved_sessions: list[SessionData] = []
+
+    async def save_session(self, session: SessionData) -> None:
+        self.saved_sessions.append(session.model_copy(deep=True))
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 class TestSessionCommandService:
@@ -225,6 +234,39 @@ class TestSessionCommandService:
 
         assert response.session_id == session.session_id
         assert repository.sessions[session.session_id].session_version == 3
+
+    async def test_restore_session_clears_previous_error_message(self):
+        session = SessionData(
+            global_goal="旧会话",
+            status=SessionStatus.ERROR,
+            error_message="上次运行失败",
+        )
+        session.add_node(
+            Node(
+                id=session.root_node_id,
+                depth=0,
+                interaction=QAInteraction(question="旧会话", answer="探索起点"),
+            )
+        )
+        repository = FakeRepository(
+            sessions={session.session_id: session},
+            reports={},
+        )
+        service = SessionCommandService(
+            repository,
+            FakeCoordinator(),
+            FakeModuleFactory(),
+        )
+
+        await service.start_session(
+            goal="恢复旧会话",
+            use_mock=False,
+            session_id=session.session_id,
+        )
+
+        restored = repository.sessions[session.session_id]
+        assert restored.status == SessionStatus.RUNNING
+        assert restored.error_message is None
 
 
 @pytest.mark.unit
@@ -490,3 +532,63 @@ class TestConfigurationService:
         assert module_factory.calls == [False]
         assert coordinator.reconfigured_with is not None
         assert message.message == "配置已重新加载"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+class TestRuntimeCoordinator:
+    async def test_worker_fatal_error_marks_session_as_error(self, monkeypatch):
+        session = SessionData(global_goal="协调器错误传播")
+        session.add_node(
+            Node(
+                id=session.root_node_id,
+                depth=0,
+                interaction=QAInteraction(
+                    question="协调器错误传播",
+                    answer="探索起点",
+                ),
+            )
+        )
+        repository = RecordingRepository()
+        coordinator = RuntimeCoordinator(repository)
+
+        monkeypatch.setattr(
+            "src.backend.services.coordinator.get_settings",
+            lambda: SimpleNamespace(
+                mcts=SimpleNamespace(
+                    exploration_constant=1.4,
+                    branch_factor=1,
+                    max_depth=5,
+                    max_simulations=5,
+                    save_interval_steps=1,
+                    parallel_workers=1,
+                )
+            ),
+        )
+
+        async def crashing_worker(worker_id, worker_session, engine):
+            del worker_id, worker_session, engine
+            raise RuntimeError("fatal worker crash")
+
+        monkeypatch.setattr(coordinator, "_single_mcts_worker", crashing_worker)
+
+        await coordinator.activate_session(
+            session=session,
+            modules=SimpleNamespace(
+                llm_client=None,
+                questioner=None,
+                compressor=None,
+                pruner=None,
+                integrator=None,
+            ),
+            use_mock=True,
+        )
+
+        assert coordinator._mcts_task is not None
+        await coordinator._mcts_task
+
+        assert session.status == SessionStatus.ERROR
+        assert "fatal worker crash" in (session.error_message or "")
+        assert coordinator.mcts_running is False
+        assert repository.saved_sessions
+        assert repository.saved_sessions[-1].status == SessionStatus.ERROR

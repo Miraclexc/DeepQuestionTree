@@ -223,6 +223,17 @@ class SessionData(BaseModel):
         self.total_simulations += 1
         self.updated_at = datetime.now()
 
+    def recalculate_total_tokens_used(self, *, touch: bool = True) -> int:
+        """根据节点交互重新计算会话级 token 统计。"""
+        self.total_tokens_used = sum(
+            node.interaction.tokens_used
+            for node in self.nodes.values()
+            if node.interaction is not None
+        )
+        if touch:
+            self.updated_at = datetime.now()
+        return self.total_tokens_used
+
     def increment_revision(self) -> None:
         """递增会话提交版本"""
         self.session_revision += 1

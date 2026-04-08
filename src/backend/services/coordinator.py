@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable
+from datetime import datetime
 
 from ..config_loader import get_settings
 from ..core.mcts_engine import MCTSEngine
@@ -147,12 +148,32 @@ class RuntimeCoordinator:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
             raise
+        except Exception as exc:
+            logger.exception(
+                "MCTS loop failed for session %s: %s",
+                session.session_id,
+                exc,
+            )
+            self._mcts_running = False
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            session.status = SessionStatus.ERROR
+            session.error_message = str(exc)
+            session.updated_at = datetime.now()
+            session.bump_session_version()
+            session.increment_revision()
+            await self._repository.save_session(session)
         finally:
             if session.status == SessionStatus.RUNNING:
                 session.status = SessionStatus.COMPLETED
+                session.error_message = None
+                session.updated_at = datetime.now()
                 session.bump_session_version()
+                session.increment_revision()
 
-            await self._repository.save_session(session)
+            if session.status != SessionStatus.ERROR:
+                await self._repository.save_session(session)
 
             if self._mcts_engine is engine:
                 self._mcts_running = False
@@ -202,9 +223,9 @@ class RuntimeCoordinator:
                     await self._repository.save_session(session)
 
                 await asyncio.sleep(0.1)
-            except Exception as exc:  # pragma: no cover - 防御性日志路径
-                logger.error("[Worker %s] 出错: %s", worker_id, exc)
-                await asyncio.sleep(1.0)
+            except Exception as exc:  # pragma: no cover - 由上层统一接管
+                logger.exception("[Worker %s] 致命错误: %s", worker_id, exc)
+                raise
 
         logger.info("Worker %s stopped for session %s", worker_id, session.session_id)
 
@@ -223,7 +244,11 @@ class RuntimeCoordinator:
 
         if session is not None and session.status == SessionStatus.RUNNING:
             session.status = status
+            if status != SessionStatus.ERROR:
+                session.error_message = None
+            session.updated_at = datetime.now()
             session.bump_session_version()
+            session.increment_revision()
             await self._repository.save_session(session)
 
         if task is not None:

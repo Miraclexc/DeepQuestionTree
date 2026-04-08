@@ -1,6 +1,6 @@
 # DeepQuestionTree Project Overview
 
-> Last Updated: 2026-04-07
+> Last Updated: 2026-04-08
 >
 > 本页唯一负责：记录当前代码已经落地的真实架构、运行时约束、配置边界、数据流与已知原型边界。
 
@@ -87,6 +87,8 @@ Backend (FastAPI app factory)
 - 新会话启动前，如果已有运行中的会话，会先把旧会话停到 `paused`
 - 活跃会话保留在运行时内存中，便于高频读写
 - 历史会话通过 SQLite 仓储恢复
+- 致命 worker / engine / persistence 异常会把活跃会话置为 `error`，写入 `error_message`
+- 恢复会话时会清空旧错误，并重新进入 `running`
 
 当前并发模型：
 
@@ -110,6 +112,8 @@ Backend (FastAPI app factory)
 - `delete_session()`：找不到直接抛 `NotFoundError`
 - `list_sessions()`：返回 `SessionSummaryRecord`
 - 报告缓存只在 `source_session_version == session.session_version` 时命中
+- `SessionManager` 保存时会根据 `(session_revision, session_version, tokens, simulations, status)` 跳过重复快照
+- 旧会话加载时会根据节点 `interaction.tokens_used` 自动校准 `total_tokens_used`
 
 ## 4. Configuration Boundary
 
@@ -125,6 +129,7 @@ Backend (FastAPI app factory)
 - 先收集并深度合并，再由 `Settings` 做一次性校验
 - 后端不读取 `src/frontend/.env.local`
 - 前端只读取自己的 `NEXT_PUBLIC_*`
+- 默认样板保持真实 provider 优先；离线 mock 另见根目录 `.env.mock.example`
 
 典型来源：
 
@@ -187,7 +192,7 @@ Backend (FastAPI app factory)
 
 - 系统状态：5 秒
 - 会话列表：10 秒
-- 树数据：2 秒
+- 树数据：不再固定轮询；仅在 `session_revision` 变化时刷新
 
 当前 UI 能力边界：
 
@@ -196,6 +201,7 @@ Backend (FastAPI app factory)
 - 可以查看节点详情
 - 可以生成报告或停止后生成报告
 - 可以删除会话
+- 当前树画布在拓扑不变时复用 Dagre 位置，只更新节点 payload
 
 当前前端没有显式暴露“从历史会话继续运行探索”的按钮，尽管后端 `POST /api/start` 支持可选 `session_id`。
 

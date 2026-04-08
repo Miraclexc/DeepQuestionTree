@@ -1,7 +1,7 @@
 import pytest
 
 import src.backend.main as main_module
-from src.backend.core.schema import Node, QAInteraction, SessionData
+from src.backend.core.schema import Node, QAInteraction, SessionData, SessionStatus
 
 
 @pytest.mark.integration
@@ -30,6 +30,53 @@ class TestSessionScopedAPI:
         assert "edges" in data
         assert "statistics" in data
         assert len(data["nodes"]) >= 1
+
+    async def test_tree_endpoint_exposes_session_revision(self, api_client):
+        session = SessionData(global_goal="树版本号")
+        root_node = Node(
+            id=session.root_node_id,
+            depth=0,
+            interaction=QAInteraction(question="树版本号", answer="探索起点"),
+        )
+        session.add_node(root_node)
+        session.session_revision = 7
+
+        repository = main_module.app.state.runtime.repository
+        await repository.save_session(session)
+
+        response = await api_client.get(f"/api/sessions/{session.session_id}/tree")
+
+        assert response.status_code == 200
+        assert response.json()["session_revision"] == 7
+
+    async def test_status_exposes_active_session_revision_and_error_message(
+        self,
+        api_client,
+    ):
+        session = SessionData(
+            global_goal="错误状态",
+            status=SessionStatus.ERROR,
+            error_message="fatal runtime failure",
+        )
+        session.add_node(
+            Node(
+                id=session.root_node_id,
+                depth=0,
+                interaction=QAInteraction(question="错误状态", answer="探索起点"),
+            )
+        )
+        session.session_revision = 11
+
+        runtime = main_module.app.state.runtime
+        runtime.coordinator._active_session = session
+        runtime.coordinator._mcts_running = False
+
+        response = await api_client.get("/api/status")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["session_revision"] == 11
+        assert data["session_error_message"] == "fatal runtime failure"
 
     async def test_starting_new_session_pauses_previous_session(
         self, api_client, monkeypatch

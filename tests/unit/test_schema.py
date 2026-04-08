@@ -264,6 +264,36 @@ class TestSessionData:
 
         assert session.total_simulations == initial + 1
 
+    def test_recalculate_total_tokens_used_from_node_interactions(self):
+        session = SessionData(global_goal="统计 token")
+        root = Node(
+            id=session.root_node_id,
+            depth=0,
+            interaction=QAInteraction(
+                question="统计 token",
+                answer="根回答",
+                tokens_used=12,
+            ),
+        )
+        child = Node(
+            parent_id=root.id,
+            depth=1,
+            interaction=QAInteraction(
+                question="继续追问",
+                answer="子回答",
+                tokens_used=23,
+            ),
+        )
+        session.add_node(root)
+        session.add_node(child)
+        root.children_ids = [child.id]
+        session.total_tokens_used = 0
+
+        total = session.recalculate_total_tokens_used()
+
+        assert total == 35
+        assert session.total_tokens_used == 35
+
     def test_get_tree_depth(self, sample_nodes):
         """测试获取树深度"""
         depth = sample_nodes.get_tree_depth()

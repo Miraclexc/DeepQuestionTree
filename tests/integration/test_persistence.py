@@ -104,6 +104,21 @@ class TestPersistence:
         assert loaded_session.total_simulations == original_session.total_simulations
         assert loaded_session.session_version == 7
 
+    async def test_load_session_recalculates_stale_total_tokens(
+        self,
+        session_manager,
+        sample_session_with_data,
+    ):
+        session = sample_session_with_data
+        session.nodes[session.root_node_id].interaction.tokens_used = 30
+        session.total_tokens_used = 999
+
+        await session_manager.save_session(session)
+        loaded_session = await session_manager.load_session(session.session_id)
+
+        assert loaded_session is not None
+        assert loaded_session.total_tokens_used == 180
+
     async def test_load_nonexistent_session(self, session_manager):
         result = await session_manager.load_session("nonexistent_session_id")
         assert result is None

@@ -41,6 +41,8 @@ class SessionQueryService:
 
         if active_session is not None:
             response.session_status = active_session.status.value
+            response.session_revision = active_session.session_revision
+            response.session_error_message = active_session.error_message
             response.total_simulations = active_session.total_simulations
             response.tree_depth = active_session.get_tree_depth()
             response.total_nodes = active_session.get_total_nodes()

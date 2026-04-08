@@ -38,6 +38,8 @@ class SystemStatusResponse(BaseModel):
     active_session_id: Optional[str] = None
     environment: str
     session_status: Optional[str] = None
+    session_revision: Optional[int] = None
+    session_error_message: Optional[str] = None
     total_simulations: Optional[int] = None
     tree_depth: Optional[int] = None
     total_nodes: Optional[int] = None
@@ -101,6 +103,7 @@ class TreeEdgeReadModel(BaseModel):
 
 class TreeResponse(BaseModel):
     session_id: str
+    session_revision: int = 0
     nodes: list[TreeNodeReadModel]
     edges: list[TreeEdgeReadModel]
     statistics: dict[str, Any]
@@ -283,6 +286,7 @@ def build_tree_response(
 
     return TreeResponse(
         session_id=session.session_id,
+        session_revision=session.session_revision,
         nodes=nodes,
         edges=edges,
         statistics=statistics,

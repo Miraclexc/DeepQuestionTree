@@ -52,3 +52,8 @@ class ReportGenerationError(ApplicationError):
 class RuntimeConflictError(ApplicationError):
     status_code = 409
     code = "runtime_conflict"
+
+
+class ConfigurationError(ApplicationError):
+    status_code = 500
+    code = "configuration_error"

@@ -14,7 +14,7 @@ from tenacity import (
 )
 
 from ..config_loader import get_settings
-from ..utils.logger import get_logger
+from ..utils.logger import get_llm_logger, get_logger
 from .client_interface import (
     BaseLLMClient,
     CompletionResponse,
@@ -44,6 +44,11 @@ class OpenAICompatibleClient(BaseLLMClient):
 
         self.generation_model = settings.llm.generation_model
         self.decision_model = settings.llm.decision_model
+        self.trace_logger = (
+            get_llm_logger()
+            if str(getattr(settings.logging, "level", "")).upper() == "DEBUG"
+            else None
+        )
 
         # 使用统计
         self.total_tokens_used = 0
@@ -70,11 +75,21 @@ class OpenAICompatibleClient(BaseLLMClient):
             model = (
                 self.decision_model if purpose == "decision" else self.generation_model
             )
+            trace_request_id: str | None = None
 
             # 设置响应格式
             response_format = (
                 {"type": "json_object"} if response_contract == "json_object" else None
             )
+
+            trace_logger = getattr(self, "trace_logger", None)
+            if trace_logger is not None:
+                trace_request_id = self.trace_logger.log_request(
+                    messages=messages,
+                    temperature=temperature,
+                    model=model,
+                    response_contract=response_contract,
+                )
 
             # 发送请求
             response = await self.client.chat.completions.create(
@@ -113,6 +128,13 @@ class OpenAICompatibleClient(BaseLLMClient):
                 self.total_cost += cost
             self.request_count += 1
 
+            if trace_logger is not None and trace_request_id is not None:
+                trace_logger.log_response(
+                    trace_request_id,
+                    content,
+                    tokens_used=tokens,
+                )
+
             return CompletionResponse(
                 content=content,
                 model=model,
@@ -125,12 +147,16 @@ class OpenAICompatibleClient(BaseLLMClient):
             raise
 
         except openai.AuthenticationError as e:
+            self._log_trace_error(locals().get("trace_request_id"), str(e))
             raise Exception(f"API 认证失败: {e}")
         except openai.RateLimitError as e:
+            self._log_trace_error(locals().get("trace_request_id"), str(e))
             raise Exception(f"API 请求频率限制: {e}")
         except openai.APITimeoutError as e:
+            self._log_trace_error(locals().get("trace_request_id"), str(e))
             raise Exception(f"API 请求超时: {e}")
         except Exception as e:
+            self._log_trace_error(locals().get("trace_request_id"), str(e))
             raise Exception(f"LLM API 调用失败: {e}")
 
     async def get_usage_stats(self) -> Dict[str, Any]:
@@ -164,3 +190,13 @@ class OpenAICompatibleClient(BaseLLMClient):
 
         price_per_1k = pricing_per_1k.get(model, 0.01)
         return (tokens / 1000) * price_per_1k
+
+    def _log_trace_error(self, request_id: str | None, error: str) -> None:
+        trace_logger = getattr(self, "trace_logger", None)
+        if trace_logger is None or request_id is None:
+            return
+        trace_logger.log_response(
+            request_id,
+            "",
+            error=error,
+        )

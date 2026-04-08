@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import ReactFlow, {
     Edge,
     Controls,
@@ -30,6 +30,11 @@ interface TreeCanvasProps {
 
 type CanvasNode = FlowNode<TreeNodeData>;
 type CanvasEdge = Edge;
+
+type LayoutCache = {
+    positions: Map<string, { x: number; y: number }>;
+    signature: string;
+};
 
 const getLayoutedElements = (nodes: CanvasNode[], edges: CanvasEdge[]) => {
     const dagreGraph = new Dagre.graphlib.Graph();
@@ -62,19 +67,51 @@ const getLayoutedElements = (nodes: CanvasNode[], edges: CanvasEdge[]) => {
     return { nodes: layoutedNodes, edges };
 };
 
+const getTopologySignature = (nodes: CanvasNode[], edges: CanvasEdge[]) => {
+    const nodeIds = nodes.map((node) => node.id).sort().join('|');
+    const edgeIds = edges
+        .map((edge) => `${edge.source}->${edge.target}`)
+        .sort()
+        .join('|');
+    return `${nodeIds}::${edgeIds}`;
+};
+
 function TreeCanvasInner({ nodes: initialNodes, edges: initialEdges, onNodeClick }: TreeCanvasProps) {
     const { fitView } = useReactFlow();
     const [nodes, setNodes, onNodesChange] = useNodesState<TreeNodeData>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<CanvasEdge>([]);
+    const layoutCacheRef = useRef<LayoutCache | null>(null);
+    const topologySignature = useMemo(
+        () => getTopologySignature(initialNodes as CanvasNode[], initialEdges as CanvasEdge[]),
+        [initialEdges, initialNodes],
+    );
 
     useEffect(() => {
         if (initialNodes.length > 0) {
+            const cachedLayout = layoutCacheRef.current;
+            if (cachedLayout && cachedLayout.signature === topologySignature) {
+                setNodes(
+                    initialNodes.map((node) => ({
+                        ...node,
+                        position: cachedLayout.positions.get(node.id) ?? node.position,
+                    })) as CanvasNode[],
+                );
+                setEdges(initialEdges as CanvasEdge[]);
+                return;
+            }
+
             const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
                 initialNodes as CanvasNode[],
                 initialEdges as CanvasEdge[],
             );
             setNodes(layoutedNodes);
             setEdges(layoutedEdges);
+            layoutCacheRef.current = {
+                signature: topologySignature,
+                positions: new Map(
+                    layoutedNodes.map((node) => [node.id, node.position]),
+                ),
+            };
 
             window.requestAnimationFrame(() => {
                 fitView({ padding: 0.2 });
@@ -82,8 +119,9 @@ function TreeCanvasInner({ nodes: initialNodes, edges: initialEdges, onNodeClick
         } else {
             setNodes([]);
             setEdges([]);
+            layoutCacheRef.current = null;
         }
-    }, [initialNodes, initialEdges, setNodes, setEdges, fitView]);
+    }, [fitView, initialEdges, initialNodes, setEdges, setNodes, topologySignature]);
 
     return (
         <div className="h-full w-full bg-slate-50 dark:bg-slate-950">

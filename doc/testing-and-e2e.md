@@ -1,6 +1,6 @@
 # Testing And E2E
 
-> Last Updated: 2026-04-07
+> Last Updated: 2026-04-08
 >
 > 本页唯一负责：维护项目级测试总览、`run_tests.py` 语义、CI 约束、真实 provider E2E 与手动验收主流程。
 
@@ -66,6 +66,13 @@ uv run pytest tests/integration -v
 uv run pytest tests/ -v
 uv run python run_tests.py quality
 uv run python run_tests.py ci
+```
+
+本轮会话语义 / revision 优化后的最小回归切片建议补充为：
+
+```bash
+uv run pytest tests/unit/test_application_services.py tests/unit/test_mcts_concurrency.py tests/integration/test_session_api.py tests/integration/test_mcts_flow.py tests/integration/test_persistence.py -q
+cd src/frontend && npm run test -- --run ../../tests/frontend/lib/contracts.test.ts ../../tests/frontend/hooks/useDeepQuestionTree.test.ts ../../tests/frontend/components/TreeCanvas.test.tsx
 ```
 
 说明：
@@ -200,6 +207,9 @@ uv run python -m src.backend.main
 - SQLite 会话库写入当前配置的 `STORAGE__SESSION_DB_PATH`
 - 删除后对应 session/report 记录确实被清理
 - 默认 `data/sessions`、`data/logs` 不被测试命令污染
+- 真实 provider 缺配置时立即返回清晰的 `configuration_error`
+- 致命 worker / engine 异常会把会话置为 `error`，并在 `/api/status` 中暴露错误消息
+- 前端长时间停留在同一会话时，树接口只在 `session_revision` 变化时重新请求
 
 ## 7. Current Boundaries
 

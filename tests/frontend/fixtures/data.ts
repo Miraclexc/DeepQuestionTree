@@ -38,6 +38,8 @@ export const systemStatusFixture: SystemStatus = {
     active_session_id: "session-1",
     environment: "test",
     session_status: "running",
+    session_revision: 1,
+    session_error_message: null,
     total_simulations: 2,
     tree_depth: 1,
     total_nodes: 3,
@@ -45,6 +47,7 @@ export const systemStatusFixture: SystemStatus = {
 
 export const treeResponseFixture: TreeResponse = {
     session_id: "session-1",
+    session_revision: 1,
     nodes: [
         {
             id: "root-node",

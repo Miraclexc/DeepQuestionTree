@@ -140,6 +140,105 @@ class NeverPrune:
         return "summary"
 
 
+class FixedTokenQuestioner:
+    async def generate_candidates(
+        self,
+        *,
+        context_facts,
+        current_answer: str,
+        goal: str,
+        parent_question: str,
+        k: int,
+    ) -> list[str]:
+        del context_facts, current_answer, goal, parent_question, k
+        return []
+
+    async def evaluate_question_value(
+        self,
+        *,
+        question: str,
+        known_facts,
+        goal: str,
+        parent_question: str,
+    ) -> float:
+        del question, known_facts, goal, parent_question
+        return 0.0
+
+    async def answer_question(
+        self,
+        *,
+        question: str,
+        context_facts,
+        goal: str,
+    ) -> tuple[str, int, str]:
+        del question, context_facts, goal
+        return "leaf-answer", 4, "answer-model"
+
+
+class FixedTokenCompressor:
+    async def extract_facts(
+        self,
+        text: str,
+        source_node_id: str,
+    ) -> tuple[list[Fact], int, str]:
+        del text
+        return (
+            [
+                Fact(
+                    content="leaf-fact",
+                    source_node_id=source_node_id,
+                    confidence=1.0,
+                )
+            ],
+            6,
+            "fact-model",
+        )
+
+    async def merge_facts(
+        self,
+        existing_facts: list[Fact],
+        new_facts: list[Fact],
+        similarity_threshold: float = 0.85,
+    ) -> list[Fact]:
+        del similarity_threshold
+        return [*existing_facts, *new_facts]
+
+
+class ExplodingQuestioner:
+    async def generate_candidates(
+        self,
+        *,
+        context_facts,
+        current_answer: str,
+        goal: str,
+        parent_question: str,
+        k: int,
+    ) -> list[str]:
+        del context_facts, current_answer, goal, parent_question, k
+        raise RuntimeError("fatal expansion failure")
+
+    async def evaluate_question_value(
+        self,
+        *,
+        question: str,
+        known_facts,
+        goal: str,
+        parent_question: str,
+    ) -> float:
+        del question, known_facts, goal, parent_question
+        return 1.0
+
+    async def answer_question(
+        self,
+        *,
+        question: str,
+        context_facts,
+        goal: str,
+    ) -> tuple[str, int, str]:
+        del question, context_facts, goal
+        return "ready", 0, "noop"
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_commit_step_rejects_stale_proposal_and_clears_reservation():
@@ -173,3 +272,61 @@ async def test_commit_step_rejects_stale_proposal_and_clears_reservation():
     stale_leaf = session.nodes[snapshot_two.leaf_node_id]
     assert stale_leaf.is_processing is False
     assert stale_leaf.processing_token is None
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_run_step_accumulates_session_total_tokens_used():
+    session = SessionData(global_goal="累计 token")
+    root = Node(
+        id=session.root_node_id,
+        depth=0,
+        interaction=QAInteraction(
+            question="累计 token",
+            answer="根节点已有答案",
+            summary="root",
+        ),
+    )
+    leaf = Node(
+        parent_id=root.id,
+        depth=1,
+        interaction=QAInteraction(question="还需要补充什么？", answer="", summary=""),
+    )
+    session.add_node(root)
+    session.add_node(leaf)
+    root.children_ids = [leaf.id]
+
+    engine = MCTSEngine(
+        session=session,
+        questioner=FixedTokenQuestioner(),
+        compressor=FixedTokenCompressor(),
+        pruner=NeverPrune(),
+        settings=build_settings(max_simulations=2),
+    )
+
+    result = await engine.run_step()
+
+    assert result is None
+    assert session.nodes[leaf.id].interaction.tokens_used == 10
+    assert session.total_tokens_used == 10
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_run_step_reraises_fatal_prepare_errors_and_clears_reservation():
+    session, leaf_id, _ = build_session_with_two_leaves()
+    session.nodes[leaf_id].interaction.answer = "已有回答"
+    engine = MCTSEngine(
+        session=session,
+        questioner=ExplodingQuestioner(),
+        compressor=DeterministicCompressor(),
+        pruner=NeverPrune(),
+        settings=build_settings(max_simulations=2),
+    )
+
+    with pytest.raises(RuntimeError, match="fatal expansion failure"):
+        await engine.run_step()
+
+    leaf = session.nodes[leaf_id]
+    assert leaf.is_processing is False
+    assert leaf.processing_token is None

@@ -70,7 +70,3 @@ export async function getSystemStatus(): Promise<SystemStatus> {
 export async function fetchReport(sessionId: string): Promise<ReportData> {
     return apiClient.get(`/sessions/${sessionId}/report`, normalizeReportData);
 }
-
-export async function reloadConfig(): Promise<{ message: string }> {
-    return apiClient.post("/config/reload");
-}

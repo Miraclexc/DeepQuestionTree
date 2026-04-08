@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from src.backend.core.mcts_engine import MCTSEngine
-from src.backend.core.schema import Node, QAInteraction, SessionData
+from src.backend.core.schema import Fact, Node, QAInteraction, SessionData
 from src.backend.llm.mock_client import MockClient
 from src.backend.modules.compressor import Compressor
 from src.backend.modules.pruner import Pruner
@@ -79,6 +79,103 @@ class SequenceChecker:
             }
         )
         return SimpleNamespace(replace_existing={}, discard_new=[], keep_new=[])
+
+
+class StaticQuestioner:
+    def __init__(self, questions=None, answer="这是回答内容。", tokens=12):
+        self.questions = list(questions or [])
+        self.answer = answer
+        self.tokens = tokens
+        self.answer_calls = 0
+        self.value_calls = 0
+
+    async def generate_candidates(
+        self,
+        *,
+        context_facts,
+        current_answer: str,
+        goal: str,
+        parent_question: str,
+        k: int,
+    ):
+        del context_facts, current_answer, goal, parent_question, k
+        return list(self.questions)
+
+    async def evaluate_question_value(
+        self,
+        *,
+        question: str,
+        known_facts,
+        goal: str,
+        parent_question: str,
+    ) -> float:
+        del question, known_facts, goal, parent_question
+        self.value_calls += 1
+        return 8.0
+
+    async def answer_question(
+        self,
+        *,
+        question: str,
+        context_facts,
+        goal: str,
+    ) -> tuple[str, int, str]:
+        del question, context_facts, goal
+        self.answer_calls += 1
+        return self.answer, self.tokens, "answer-model"
+
+
+class StaticCompressor:
+    def __init__(self, extract_tokens=8):
+        self.extract_tokens = extract_tokens
+
+    async def extract_facts(
+        self,
+        text: str,
+        source_node_id: str,
+    ) -> tuple[list[Fact], int, str]:
+        del text
+        return (
+            [
+                Fact(
+                    content="提取出的事实",
+                    source_node_id=source_node_id,
+                    confidence=0.9,
+                )
+            ],
+            self.extract_tokens,
+            "fact-model",
+        )
+
+    async def merge_facts(
+        self,
+        existing_facts: list[Fact],
+        new_facts: list[Fact],
+        similarity_threshold: float = 0.85,
+    ) -> list[Fact]:
+        del similarity_threshold
+        return [*existing_facts, *new_facts]
+
+
+class SummaryPruner:
+    def __init__(self):
+        self.summary_calls = 0
+
+    async def should_prune(
+        self,
+        node: Node,
+        session: SessionData,
+        phase: str = "pre",
+    ) -> tuple[bool, str | None]:
+        del node, session
+        if phase == "post":
+            return True, "连续低价值路径"
+        return False, None
+
+    async def summarize_path(self, leaf_node: Node, session: SessionData) -> str:
+        del leaf_node, session
+        self.summary_calls += 1
+        return "剪枝路径摘要"
 
 
 @pytest.mark.integration
@@ -392,6 +489,84 @@ class TestMCTSFlow:
             session.nodes[node_id].interaction.question == "后续问题是什么？"
             for node_id in leaf.children_ids
         )
+
+    async def test_expand_filters_candidates_before_creating_nodes(self):
+        session = SessionData(global_goal="测试候选准入过滤")
+        root_node = Node(
+            id=session.root_node_id,
+            depth=0,
+            interaction=QAInteraction(
+                question="测试候选准入过滤",
+                answer="这里是根节点回答",
+            ),
+        )
+        session.add_node(root_node)
+
+        checker = SequenceChecker(
+            reviews=[
+                {"score": 7.0},
+                {
+                    "is_off_topic": True,
+                    "should_prune": True,
+                    "reason": "偏离主题",
+                },
+            ]
+        )
+        questioner = StaticQuestioner(
+            questions=[
+                "这个方向可行吗？",
+                " 这个方向可行吗？ ",
+                "今天午饭吃什么？",
+            ]
+        )
+        engine = MCTSEngine(
+            session,
+            questioner=questioner,
+            pruner=Pruner(SequenceLLM([]), checker=checker),
+            compressor=StaticCompressor(),
+        )
+
+        new_node_ids = await engine._expand(session, root_node)
+
+        assert len(new_node_ids) == 1
+        assert len(root_node.children_ids) == 1
+        assert session.nodes[root_node.children_ids[0]].interaction.question == (
+            "这个方向可行吗？"
+        )
+        assert len(checker.review_calls) == 2
+        assert all(call["stage"] == "pre" for call in checker.review_calls)
+
+    async def test_post_prune_persists_generated_path_summary(self):
+        session = SessionData(global_goal="测试剪枝摘要")
+        root_node = Node(
+            id=session.root_node_id,
+            depth=0,
+            interaction=QAInteraction(question="测试剪枝摘要", answer="探索起点"),
+        )
+        leaf = Node(
+            parent_id=root_node.id,
+            depth=1,
+            interaction=QAInteraction(question="这个方向是否值得继续？", answer=""),
+        )
+        session.add_node(root_node)
+        session.add_node(leaf)
+        root_node.children_ids = [leaf.id]
+
+        pruner = SummaryPruner()
+        engine = MCTSEngine(
+            session,
+            questioner=StaticQuestioner(questions=[]),
+            compressor=StaticCompressor(),
+            pruner=pruner,
+        )
+
+        result = await engine.run_step()
+
+        assert result is None
+        assert leaf.is_pruned is True
+        assert leaf.prune_reason == "连续低价值路径"
+        assert leaf.interaction.summary == "剪枝路径摘要"
+        assert pruner.summary_calls == 1
 
 
 @pytest.mark.integration

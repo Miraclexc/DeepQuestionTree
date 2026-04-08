@@ -113,10 +113,10 @@ class MCTSEngine:
                 await self.abort_step(snapshot)
             raise
         except Exception as exc:
-            logger.error(f"MCTS 步骤执行失败: {exc}")
+            logger.exception("MCTS 步骤执行失败: %s", exc)
             if snapshot is not None:
                 await self.abort_step(snapshot)
-            return None
+            raise
 
     async def reserve_step(self) -> SessionSnapshot | None:
         """在串行提交通道内预占一个叶子节点，并构造只读快照。"""
@@ -168,7 +168,7 @@ class MCTSEngine:
             if should_prune:
                 prune_reason = reason or "未命名剪枝原因"
                 logger.info("Pruning node %s: %s", leaf_node.id, prune_reason)
-                leaf_node.mark_pruned(prune_reason)
+                await self._mark_pruned_node(session, leaf_node, prune_reason)
                 return self._build_proposal(
                     snapshot=snapshot,
                     session=session,
@@ -190,7 +190,7 @@ class MCTSEngine:
             if should_prune:
                 prune_reason = reason or "未命名剪枝原因"
                 logger.info("Pruning node %s: %s", leaf_node.id, prune_reason)
-                leaf_node.mark_pruned(prune_reason)
+                await self._mark_pruned_node(session, leaf_node, prune_reason)
                 return self._build_proposal(
                     snapshot=snapshot,
                     session=session,
@@ -323,6 +323,7 @@ class MCTSEngine:
             self.session.global_facts = [
                 fact.model_copy(deep=True) for fact in proposal.global_facts
             ]
+            self.session.recalculate_total_tokens_used()
 
             if proposal.simulation_applied:
                 self.session.increment_simulations()
@@ -412,17 +413,62 @@ class MCTSEngine:
             k=self.settings.mcts.branch_factor,
         )
 
+        normalized_history = {
+            self._normalize_question_text(node.interaction.question)
+            for node in session.nodes.values()
+            if node.interaction and node.interaction.question
+        }
+        seen_candidates: set[str] = set()
         new_ids: list[str] = []
         for question_text in questions:
-            new_node = Node(
+            normalized_question = self._normalize_question_text(question_text)
+            if not normalized_question:
+                continue
+            if (
+                normalized_question in normalized_history
+                or normalized_question in seen_candidates
+            ):
+                logger.info(
+                    "Skipping duplicate candidate before node creation: %s",
+                    question_text,
+                )
+                continue
+
+            candidate_node = Node(
                 parent_id=parent_node.id,
                 depth=parent_node.depth + 1,
                 prune_reason=None,
                 interaction=QAInteraction(
-                    question=question_text,
+                    question=question_text.strip(),
                     answer="",
                     summary="",
                     model_used=None,
+                ),
+            )
+            if self.pruner:
+                should_prune, reason = await self._should_prune(
+                    candidate_node,
+                    session,
+                    phase="pre",
+                )
+                if should_prune:
+                    logger.info(
+                        "Rejected candidate before node creation: %s (%s)",
+                        question_text,
+                        reason or "未命名原因",
+                    )
+                    continue
+
+            seen_candidates.add(normalized_question)
+            new_node = Node(
+                id=candidate_node.id,
+                parent_id=candidate_node.parent_id,
+                depth=candidate_node.depth,
+                prune_reason=None,
+                interaction=(
+                    candidate_node.interaction.model_copy(deep=True)
+                    if candidate_node.interaction is not None
+                    else None
                 ),
             )
             session.add_node(new_node)
@@ -526,40 +572,34 @@ class MCTSEngine:
             )
             return
 
-        try:
-            question = interaction.question
-            answer, tokens, model = await self.questioner.answer_question(
-                question=question,
-                context_facts=session.global_facts,
-                goal=session.global_goal,
-            )
+        question = interaction.question
+        answer, tokens, model = await self.questioner.answer_question(
+            question=question,
+            context_facts=session.global_facts,
+            goal=session.global_goal,
+        )
 
-            interaction.answer = answer
-            interaction.tokens_used = tokens
-            interaction.model_used = model
+        interaction.answer = answer
+        interaction.tokens_used = tokens
+        interaction.model_used = model
 
-            new_facts, extract_tokens, _ = await self.compressor.extract_facts(
-                answer, node.id
-            )
-            node.new_facts = new_facts
-            interaction.tokens_used += extract_tokens
-            session.global_facts = await self.compressor.merge_facts(
-                session.global_facts,
-                new_facts,
-            )
-            node.touch(bump_revision=True)
+        new_facts, extract_tokens, _ = await self.compressor.extract_facts(
+            answer, node.id
+        )
+        node.new_facts = new_facts
+        interaction.tokens_used += extract_tokens
+        session.global_facts = await self.compressor.merge_facts(
+            session.global_facts,
+            new_facts,
+        )
+        node.touch(bump_revision=True)
 
-            logger.info(
-                "Processed node %s: Generated answer and %s facts (Total Tokens: %s)",
-                node.id,
-                len(new_facts),
-                interaction.tokens_used,
-            )
-        except Exception as exc:
-            logger.error(f"Failed to process node {node.id}: {exc}")
-            if node.interaction is not None:
-                node.interaction.answer = "Error generating answer."
-                node.touch(bump_revision=True)
+        logger.info(
+            "Processed node %s: Generated answer and %s facts (Total Tokens: %s)",
+            node.id,
+            len(new_facts),
+            interaction.tokens_used,
+        )
 
     def get_tree_statistics(self) -> Dict[str, float | int]:
         """
@@ -712,3 +752,38 @@ class MCTSEngine:
         if has_phase:
             return await should_prune(node, session, phase=phase)
         return await should_prune(node, session)
+
+    def _normalize_question_text(self, question: str) -> str:
+        normalized = question.strip()
+        checker = getattr(self.pruner, "checker", None)
+        if checker is None:
+            checker = getattr(self.questioner, "checker", None)
+        if checker is not None and hasattr(checker, "normalize_text"):
+            return checker.normalize_text(normalized)
+        return " ".join(normalized.lower().split())
+
+    async def _mark_pruned_node(
+        self,
+        session: SessionData,
+        node: Node,
+        reason: str,
+    ) -> None:
+        node.mark_pruned(reason)
+        if (
+            node.interaction is None
+            or self.pruner is None
+            or not hasattr(self.pruner, "summarize_path")
+            or node.interaction.summary
+            or not node.interaction.answer
+            or node.interaction.answer == "探索起点"
+        ):
+            return
+
+        try:
+            node.interaction.summary = await self.pruner.summarize_path(node, session)
+        except Exception as exc:  # pragma: no cover - 降级摘要路径
+            logger.warning("Failed to summarize pruned node %s: %s", node.id, exc)
+            node.interaction.summary = (
+                node.interaction.answer[:120] if node.interaction.answer else reason
+            )
+        node.touch(bump_revision=True)

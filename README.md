@@ -1,6 +1,6 @@
 # DeepQuestionTree
 
-> Last Updated: 2026-04-07
+> Last Updated: 2026-04-08
 >
 > 本页唯一负责：作为项目入口页，提供最短启动路径，并把用户与开发者分流到各自文档。
 
@@ -27,10 +27,18 @@ npm ci
 
 ### Configure Local Environment
 
-从 [`.env.example`](./.env.example) 生成根目录 `.env`：
+真实 provider 默认样板在 [`.env.example`](./.env.example)，离线 mock 样板在 [`.env.mock.example`](./.env.mock.example)。
+
+如果你要直接连真实 provider：
 
 ```bash
 copy .env.example .env
+```
+
+如果你只想离线调试：
+
+```bash
+copy .env.mock.example .env
 ```
 
 后端配置优先级固定为：
@@ -57,6 +65,8 @@ NEXT_PUBLIC_API_PORT=8001
 NEXT_PUBLIC_API_TOKEN=dev-token
 ```
 
+真实 provider 模式现在会在启动前做配置预检；如果 `LLM__API_KEY`、`LLM__BASE_URL` 或模型名缺失，会直接返回 `configuration_error`，并提示切到 mock 配置，而不是等到运行中才模糊失败。
+
 ### Start the App
 
 启动后端：
@@ -82,6 +92,8 @@ npm run dev
 ```js
 localStorage.setItem("dqt.apiToken", "dev-token");
 ```
+
+运行中如果 MCTS worker / 引擎出现致命异常，会话会进入 `error` 状态，`/api/status` 与 session/tree read-model 会暴露最新 `session_revision` 和错误消息，前端只会在 revision 变化时重新拉树。
 
 ## Documentation
 

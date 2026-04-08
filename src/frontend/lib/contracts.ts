@@ -124,6 +124,11 @@ export function normalizeSystemStatus(payload: unknown): SystemStatus {
         active_session_id: asNullableString(record.active_session_id),
         environment: asString(record.environment, "development"),
         session_status: asNullableString(record.session_status),
+        session_revision:
+            typeof record.session_revision === "number"
+                ? record.session_revision
+                : null,
+        session_error_message: asNullableString(record.session_error_message),
         total_simulations:
             typeof record.total_simulations === "number"
                 ? record.total_simulations
@@ -191,6 +196,7 @@ export function normalizeTreeResponse(payload: unknown): TreeResponse {
 
     return {
         session_id: asString(record.session_id),
+        session_revision: asNumber(record.session_revision),
         nodes: normalizeTreeNodes(record.nodes),
         edges: normalizeTreeEdges(record.edges),
         statistics: Object.fromEntries(

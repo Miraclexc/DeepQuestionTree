@@ -4,6 +4,7 @@ import {
     normalizeNodeDetail,
     normalizeReportData,
     normalizeSessionSummaries,
+    normalizeSystemStatus,
     normalizeTreeResponse,
 } from "@/lib/contracts";
 
@@ -51,6 +52,7 @@ describe("contracts normalization", () => {
     it("normalizes tree payloads and drops non-number statistics", () => {
         const tree = normalizeTreeResponse({
             session_id: "session-1",
+            session_revision: 4,
             nodes: [
                 {
                     id: "root",
@@ -94,6 +96,25 @@ describe("contracts normalization", () => {
             total_nodes: 2,
             tree_depth: 1,
         });
+        expect((tree as any).session_revision).toBe(4);
+    });
+
+    it("normalizes system status revision and active error message", () => {
+        const status = normalizeSystemStatus({
+            single_session_mode: true,
+            mcts_running: true,
+            has_active_session: true,
+            active_session_id: "session-1",
+            environment: "test",
+            session_status: "error",
+            session_revision: 9,
+            session_error_message: "fatal runtime failure",
+        });
+
+        expect((status as any).session_revision).toBe(9);
+        expect((status as any).session_error_message).toBe(
+            "fatal runtime failure",
+        );
     });
 
     it("normalizes node details with null-safe interaction and path fallbacks", () => {

@@ -1,6 +1,6 @@
 # Developer Guide
 
-> Last Updated: 2026-04-07
+> Last Updated: 2026-04-08
 >
 > 本页唯一负责：面向开发者说明环境基线、目录职责、调试入口、变更同步点和文档维护规则。
 
@@ -112,6 +112,8 @@ npm run dev
 - 浏览器端优先使用 `localStorage["dqt.apiToken"]`
 - 会话和报告缓存统一落在 `storage.session_db_path`
 - 默认 SQLite 文件路径是 `data/sessions/deepquestiontree.sqlite3`
+- [`.env.example`](../.env.example) 现在代表“真实 provider 优先”的样板；离线调试请改用 [`.env.mock.example`](../.env.mock.example)
+- `RuntimeModuleFactory` 会在真实 provider 模式启动前预检 `llm.api_key`、`llm.base_url`、`llm.generation_model` 和 `llm.decision_model`
 
 ## 5. Change Synchronization Points
 
@@ -138,6 +140,12 @@ npm run dev
 - [`./user-guide.md`](./user-guide.md)
 
 如果按钮文案、交互路径或 Token 使用方式改变，用户手册必须同步。
+
+当前树刷新契约也在这一层同步：
+
+- `/api/status` 只做轻量轮询
+- `TreeResponse.session_revision` 驱动树数据刷新
+- `TreeCanvas` 在拓扑不变时复用旧布局并跳过额外 viewport fit
 
 ### 5.3 改测试入口时
 

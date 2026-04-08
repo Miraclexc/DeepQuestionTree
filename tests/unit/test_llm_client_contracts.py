@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -119,3 +120,52 @@ async def test_mock_client_returns_structured_payload_for_json_object_contract()
 
     assert isinstance(response.structured_content, dict)
     assert "score" in response.structured_content
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_openai_client_emits_trace_logs_when_debug_logging_enabled(monkeypatch):
+    trace_logger = Mock()
+    trace_logger.log_request.return_value = "trace-1"
+
+    async def fake_create(**kwargs):
+        return _build_chat_response("debug response", tokens=21)
+
+    monkeypatch.setattr(
+        "src.backend.llm.llm_client.get_settings",
+        lambda: SimpleNamespace(
+            llm=SimpleNamespace(
+                api_key="debug-key",
+                base_url="https://example.test/v1",
+                timeout=30,
+                max_retries=0,
+                generation_model="generation-model",
+                decision_model="decision-model",
+            ),
+            logging=SimpleNamespace(level="DEBUG"),
+        ),
+    )
+    monkeypatch.setattr(
+        "src.backend.llm.llm_client.openai.AsyncOpenAI",
+        lambda **kwargs: SimpleNamespace(
+            chat=SimpleNamespace(
+                completions=SimpleNamespace(
+                    create=fake_create,
+                )
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        "src.backend.llm.llm_client.get_llm_logger",
+        lambda: trace_logger,
+    )
+
+    client = OpenAICompatibleClient()
+    await client.chat_completion(
+        messages=[{"role": "user", "content": "debug trace"}],
+        response_contract="text",
+        purpose="generation",
+    )
+
+    trace_logger.log_request.assert_called_once()
+    trace_logger.log_response.assert_called_once()

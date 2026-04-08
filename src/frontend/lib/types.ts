@@ -104,6 +104,7 @@ export interface TreeFlowEdge {
 
 export interface TreeResponse {
     session_id: string;
+    session_revision: number;
     nodes: TreeFlowNode[];
     edges: TreeFlowEdge[];
     statistics: Record<string, number>;
@@ -116,6 +117,8 @@ export interface SystemStatus {
     active_session_id?: string | null;
     environment: string;
     session_status?: string | null;
+    session_revision?: number | null;
+    session_error_message?: string | null;
     total_simulations?: number | null;
     tree_depth?: number | null;
     total_nodes?: number | null;

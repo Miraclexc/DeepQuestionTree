@@ -30,6 +30,9 @@ class SessionManager:
         self.settings = get_settings()
         configured_path = db_path or self.settings.storage.session_db_path
         self.db_path = Path(configured_path)
+        self._last_saved_signatures: dict[
+            str, tuple[int, int, int, int, str, str | None]
+        ] = {}
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize_database()
 
@@ -38,6 +41,26 @@ class SessionManager:
 
     def _save_session_sync(self, session: SessionData) -> bool:
         try:
+            signature = (
+                session.session_revision,
+                session.session_version,
+                session.total_tokens_used,
+                session.total_simulations,
+                (
+                    session.status.value
+                    if hasattr(session.status, "value")
+                    else str(session.status)
+                ),
+                session.error_message,
+            )
+            if self._last_saved_signatures.get(session.session_id) == signature:
+                logger.debug(
+                    "跳过重复保存的会话快照: %s (revision=%s)",
+                    session.session_id,
+                    session.session_revision,
+                )
+                return True
+
             session_json = session.model_dump_json(ensure_ascii=False)
             payload = (
                 session.session_id,
@@ -94,6 +117,7 @@ class SessionManager:
                     payload,
                 )
                 connection.commit()
+            self._last_saved_signatures[session.session_id] = signature
             logger.info("会话 %s 已保存到 SQLite", session.session_id)
             return True
         except Exception as exc:  # pragma: no cover - 由上层仓储转换
@@ -116,6 +140,7 @@ class SessionManager:
 
             session_data = json.loads(row["session_json"])
             session = SessionData.model_validate(session_data)
+            session.recalculate_total_tokens_used(touch=False)
             logger.info("会话 %s 已从 SQLite 加载", session_id)
             return session
         except json.JSONDecodeError as exc:
@@ -138,6 +163,7 @@ class SessionManager:
                 connection.commit()
             deleted = cursor.rowcount > 0
             if deleted:
+                self._last_saved_signatures.pop(session_id, None)
                 logger.info("会话 %s 已删除", session_id)
             else:
                 logger.warning("会话不存在: %s", session_id)

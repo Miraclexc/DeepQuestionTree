@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
     fetchSessions,
@@ -23,6 +23,7 @@ import { useSessionCommands } from "./useSessionCommands";
 
 const EMPTY_TREE: TreeResponse = {
     session_id: "",
+    session_revision: 0,
     nodes: [],
     edges: [],
     statistics: {},
@@ -35,6 +36,8 @@ const EMPTY_STATUS: SystemStatus = {
     active_session_id: null,
     environment: "development",
     session_status: null,
+    session_revision: null,
+    session_error_message: null,
     total_simulations: null,
     tree_depth: null,
     total_nodes: null,
@@ -45,6 +48,7 @@ export type ConnectionState = "connected" | "disconnected" | "unknown";
 export function useDeepQuestionTree() {
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
     const [hasLoadedStatus, setHasLoadedStatus] = useState(false);
+    const pendingTreeRefreshRevisionRef = useRef<string | null>(null);
 
     const sessionsQuery = usePollingResource<SessionSummary[]>(
         "sessions",
@@ -68,7 +72,6 @@ export function useDeepQuestionTree() {
         {
             enabled: Boolean(currentSessionId),
             initialData: EMPTY_TREE,
-            pollMs: 2000,
         },
     );
     const { error, clearError } = useGlobalApiError();
@@ -92,6 +95,66 @@ export function useDeepQuestionTree() {
             setHasLoadedStatus(true);
         }
     }, [statusQuery.error, statusQuery.isLoading]);
+
+    useEffect(() => {
+        if (!currentSessionId) {
+            pendingTreeRefreshRevisionRef.current = null;
+        }
+    }, [currentSessionId]);
+
+    useEffect(() => {
+        if (!currentSessionId) {
+            return;
+        }
+
+        if (statusQuery.isLoading || statusQuery.error) {
+            return;
+        }
+
+        if (statusQuery.data.active_session_id !== currentSessionId) {
+            return;
+        }
+
+        const statusRevision = statusQuery.data.session_revision;
+        const treeRevision =
+            treeQuery.data?.session_id === currentSessionId
+                ? treeQuery.data.session_revision
+                : null;
+        const refreshKey =
+            typeof statusRevision === "number"
+                ? `${currentSessionId}:${statusRevision}`
+                : null;
+
+        if (
+            typeof statusRevision !== "number"
+            || typeof treeRevision !== "number"
+            || statusRevision === treeRevision
+        ) {
+            if (
+                typeof statusRevision === "number"
+                && typeof treeRevision === "number"
+                && statusRevision === treeRevision
+            ) {
+                pendingTreeRefreshRevisionRef.current = null;
+            }
+            return;
+        }
+
+        if (refreshKey && pendingTreeRefreshRevisionRef.current === refreshKey) {
+            return;
+        }
+
+        pendingTreeRefreshRevisionRef.current = refreshKey;
+        void treeQuery.refresh();
+    }, [
+        currentSessionId,
+        statusQuery.data.active_session_id,
+        statusQuery.data.session_revision,
+        statusQuery.error,
+        statusQuery.isLoading,
+        treeQuery.data,
+        treeQuery.refresh,
+    ]);
 
     const currentSession = useMemo(
         () =>

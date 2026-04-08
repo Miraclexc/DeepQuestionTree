@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from ..api.dto import StartResponse, StopResponse
 from ..config_loader import get_settings
 from ..core.schema import Node, QAInteraction, SessionData, SessionStatus
@@ -41,8 +43,11 @@ class SessionCommandService:
 
         if session_id:
             session = await self._repository.get_session(session_id)
-            session.bump_session_version()
             session.status = SessionStatus.RUNNING
+            session.error_message = None
+            session.updated_at = datetime.now()
+            session.bump_session_version()
+            session.increment_revision()
             logger.info("恢复会话: %s", session_id)
         else:
             session = self._create_session(goal)
@@ -117,4 +122,5 @@ class SessionCommandService:
         )
         session.add_node(root_node)
         session.bump_session_version()
+        session.increment_revision()
         return session

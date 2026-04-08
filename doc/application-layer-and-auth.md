@@ -1,6 +1,6 @@
 # Application Layer And Auth
 
-> Last Updated: 2026-04-07
+> Last Updated: 2026-04-08
 >
 > 本页唯一负责：作为统一 API、鉴权规则、错误响应与 read-model 契约的单一事实来源。
 
@@ -97,8 +97,15 @@ localStorage.setItem("dqt.apiToken", "dev-token");
 - `AuthError` -> `401` 或 `403`
 - `NotFoundError` -> `404`
 - `RuntimeConflictError` -> `409`
+- `ConfigurationError` -> `500`
 - `PersistenceError` -> `500`
 - `ReportGenerationError` -> `500`
+
+补充语义：
+
+- 当真实 provider 配置缺失或非法时，`POST /api/start` 会在模块装配前失败，并返回 `code=configuration_error`
+- 协调器、MCTS 主循环或持久化边界发生致命异常时，活跃会话会被置为 `error`，并写入 `error_message`
+- 恢复会话时会清空旧的 `error_message`
 
 ## 5. Stable Read-Model Contracts
 
@@ -111,6 +118,14 @@ localStorage.setItem("dqt.apiToken", "dev-token");
 - `NodeDetailResponse`
 
 这层归一化由 [`../src/backend/api/dto.py`](../src/backend/api/dto.py) 负责。
+
+当前新增的轻量同步字段：
+
+- `SystemStatusResponse.session_revision`
+- `SystemStatusResponse.session_error_message`
+- `TreeResponse.session_revision`
+
+这些字段用于前端的轻量状态轮询：先轮询 `/api/status`，只有 revision 变化时才重新请求树。
 
 ### 5.2 Report response
 

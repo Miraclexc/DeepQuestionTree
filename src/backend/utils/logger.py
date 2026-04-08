@@ -6,6 +6,7 @@
 import json
 import logging
 import logging.handlers
+import re
 import sys
 import uuid
 from contextvars import ContextVar
@@ -84,14 +85,11 @@ class LLMTraceLogger:
         except Exception:
             pass
 
-        # 生成带时间戳的文件名：llm_trace_YYYY-MM-DD_HH-MM-SS.log
-        from datetime import datetime
-
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        log_file = log_dir / f"llm_trace_{timestamp}.log"
-
-        # 使用 FileHandler 记录本次运行的日志
-        file_handler = logging.FileHandler(filename=log_file, encoding="utf-8")
+        file_handler = _build_file_handler(
+            log_dir=log_dir,
+            base_filename="llm_trace.log",
+            rotation=str(getattr(settings.logging, "file_rotation", "daily")),
+        )
 
         # LLM Trace logs are usually large text blobs, keep them readable (not JSON) by default
         file_formatter = logging.Formatter(
@@ -202,14 +200,11 @@ def setup_logging():
     try:
         log_dir.mkdir(parents=True, exist_ok=True)
 
-        # 生成带时间戳的文件名：backend_log_YYYY-MM-DD_HH-MM-SS.log
-        from datetime import datetime
-
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        log_file = log_dir / f"backend_log_{timestamp}.log"
-
-        # 使用 FileHandler 记录本次运行的日志
-        file_handler = logging.FileHandler(filename=log_file, encoding="utf-8")
+        file_handler = _build_file_handler(
+            log_dir=log_dir,
+            base_filename="backend.log",
+            rotation=str(getattr(settings.logging, "file_rotation", "daily")),
+        )
         file_handler.setLevel(level)
 
         if use_json:
@@ -237,3 +232,48 @@ def setup_logging():
 def get_logger(name: str) -> logging.Logger:
     """获取指定名称的日志记录器"""
     return logging.getLogger(name)
+
+
+def _build_file_handler(
+    *,
+    log_dir: Path,
+    base_filename: str,
+    rotation: str,
+) -> logging.Handler:
+    normalized = rotation.strip().lower()
+    log_path = log_dir / base_filename
+
+    if normalized in {"daily", "midnight"}:
+        return logging.handlers.TimedRotatingFileHandler(
+            filename=log_path,
+            when="midnight",
+            interval=1,
+            backupCount=7,
+            encoding="utf-8",
+        )
+
+    if normalized == "hourly":
+        return logging.handlers.TimedRotatingFileHandler(
+            filename=log_path,
+            when="H",
+            interval=1,
+            backupCount=24,
+            encoding="utf-8",
+        )
+
+    size_match = re.fullmatch(r"size:(\d+)(kb|mb|gb)?", normalized)
+    if size_match:
+        multiplier = {
+            "kb": 1024,
+            "mb": 1024 * 1024,
+            "gb": 1024 * 1024 * 1024,
+            None: 1,
+        }[size_match.group(2)]
+        return logging.handlers.RotatingFileHandler(
+            filename=log_path,
+            maxBytes=int(size_match.group(1)) * multiplier,
+            backupCount=5,
+            encoding="utf-8",
+        )
+
+    return logging.FileHandler(filename=log_path, encoding="utf-8")
