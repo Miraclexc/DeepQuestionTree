@@ -8,6 +8,7 @@ import pytest
 
 from src.backend.core.mcts_engine import MCTSEngine
 from src.backend.core.schema import Fact, Node, QAInteraction, SessionData
+from src.backend.llm.usage_tracking import record_usage_for_current_request
 
 
 def build_settings(*, max_simulations: int = 4, branch_factor: int = 1):
@@ -94,6 +95,44 @@ class BarrierQuestioner:
         return f"answer:{question}", 1, "fake-model"
 
 
+class UsageTrackingQuestioner:
+    async def generate_candidates(
+        self,
+        *,
+        context_facts,
+        current_answer: str,
+        goal: str,
+        parent_question: str,
+        k: int,
+    ) -> list[str]:
+        del context_facts, current_answer, goal, parent_question, k
+        record_usage_for_current_request("question-model", 3)
+        return ["下一步应该验证什么？"]
+
+    async def evaluate_question_value(
+        self,
+        *,
+        question: str,
+        known_facts,
+        goal: str,
+        parent_question: str,
+    ) -> float:
+        del question, known_facts, goal, parent_question
+        record_usage_for_current_request("score-model", 2)
+        return 8.0
+
+    async def answer_question(
+        self,
+        *,
+        question: str,
+        context_facts,
+        goal: str,
+    ) -> tuple[str, int, str]:
+        del question, context_facts, goal
+        record_usage_for_current_request("answer-model", 4)
+        return "leaf-answer", 4, "answer-model"
+
+
 class DeterministicCompressor:
     async def extract_facts(
         self,
@@ -128,11 +167,58 @@ class DeterministicCompressor:
         return merged
 
 
+class UsageTrackingCompressor:
+    async def extract_facts(
+        self,
+        text: str,
+        source_node_id: str,
+    ) -> tuple[list[Fact], int, str]:
+        del text
+        record_usage_for_current_request("fact-model", 6)
+        return (
+            [
+                Fact(
+                    content="leaf-fact",
+                    source_node_id=source_node_id,
+                    confidence=1.0,
+                )
+            ],
+            6,
+            "fact-model",
+        )
+
+    async def merge_facts(
+        self,
+        existing_facts: list[Fact],
+        new_facts: list[Fact],
+        similarity_threshold: float = 0.85,
+    ) -> list[Fact]:
+        del similarity_threshold
+        record_usage_for_current_request("dedupe-model", 5)
+        return [*existing_facts, *new_facts]
+
+
 class NeverPrune:
     async def should_prune(
         self, node: Node, session: SessionData
     ) -> tuple[bool, str | None]:
         del node, session
+        return False, None
+
+    async def summarize_path(self, leaf_node: Node, session: SessionData) -> str:
+        del leaf_node, session
+        return "summary"
+
+
+class UsageTrackingPruner:
+    async def should_prune(
+        self,
+        node: Node,
+        session: SessionData,
+        phase: str = "pre",
+    ) -> tuple[bool, str | None]:
+        del node, session, phase
+        record_usage_for_current_request("checker-model", 1)
         return False, None
 
     async def summarize_path(self, leaf_node: Node, session: SessionData) -> str:
@@ -172,6 +258,7 @@ class FixedTokenQuestioner:
         goal: str,
     ) -> tuple[str, int, str]:
         del question, context_facts, goal
+        record_usage_for_current_request("answer-model", 4)
         return "leaf-answer", 4, "answer-model"
 
 
@@ -182,6 +269,7 @@ class FixedTokenCompressor:
         source_node_id: str,
     ) -> tuple[list[Fact], int, str]:
         del text
+        record_usage_for_current_request("fact-model", 6)
         return (
             [
                 Fact(
@@ -276,6 +364,29 @@ async def test_commit_step_rejects_stale_proposal_and_clears_reservation():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_snapshot_and_proposal_drop_obsolete_leaf_revision_metadata():
+    session, _, _ = build_session_with_two_leaves()
+    engine = MCTSEngine(
+        session=session,
+        questioner=BarrierQuestioner(participants=1),
+        compressor=DeterministicCompressor(),
+        pruner=NeverPrune(),
+        settings=build_settings(max_simulations=4),
+    )
+
+    snapshot = await engine.reserve_step()
+
+    assert snapshot is not None
+    assert not hasattr(snapshot, "leaf_node_revision")
+
+    proposal = await engine.prepare_step(snapshot)
+
+    assert proposal is not None
+    assert not hasattr(proposal, "leaf_node_revision")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_run_step_accumulates_session_total_tokens_used():
     session = SessionData(global_goal="累计 token")
     root = Node(
@@ -309,6 +420,51 @@ async def test_run_step_accumulates_session_total_tokens_used():
     assert result is None
     assert session.nodes[leaf.id].interaction.tokens_used == 10
     assert session.total_tokens_used == 10
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_run_step_tracks_all_prepare_phase_llm_usage_in_session_totals():
+    session = SessionData(global_goal="累计完整 token")
+    root = Node(
+        id=session.root_node_id,
+        depth=0,
+        interaction=QAInteraction(
+            question="累计完整 token",
+            answer="根节点已有答案",
+            summary="root",
+        ),
+    )
+    leaf = Node(
+        parent_id=root.id,
+        depth=1,
+        interaction=QAInteraction(question="还需要补充什么？", answer="", summary=""),
+    )
+    session.add_node(root)
+    session.add_node(leaf)
+    root.children_ids = [leaf.id]
+
+    engine = MCTSEngine(
+        session=session,
+        questioner=UsageTrackingQuestioner(),
+        compressor=UsageTrackingCompressor(),
+        pruner=UsageTrackingPruner(),
+        settings=build_settings(max_simulations=2),
+    )
+
+    result = await engine.run_step()
+
+    assert result is not None
+    assert session.nodes[leaf.id].interaction.tokens_used == 10
+    assert session.total_tokens_used == 23
+    assert session.llm_usage.total_calls == 8
+    assert session.llm_usage.total_tokens == 23
+    assert session.llm_usage.usage_by_model["checker-model"].tokens == 3
+    assert session.llm_usage.usage_by_model["answer-model"].tokens == 4
+    assert session.llm_usage.usage_by_model["fact-model"].tokens == 6
+    assert session.llm_usage.usage_by_model["dedupe-model"].tokens == 5
+    assert session.llm_usage.usage_by_model["question-model"].tokens == 3
+    assert session.llm_usage.usage_by_model["score-model"].tokens == 2
 
 
 @pytest.mark.unit

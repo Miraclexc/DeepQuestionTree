@@ -1,6 +1,6 @@
 """
 单元测试 - Compressor 模块
-测试事实提取、上下文压缩、事实合并功能
+测试事实提取、事实合并与摘要功能
 """
 
 from types import SimpleNamespace
@@ -99,20 +99,11 @@ class TestCompressor:
 
         assert isinstance(facts, list)
 
-    async def test_compress_context_no_compression_needed(self, compressor):
-        short_text = "这是一段很短的文本。"
-
-        compressed = await compressor.compress_context(short_text, token_limit=2000)
-
-        assert compressed == short_text
-
-    async def test_compress_context_compression_needed(self, compressor):
-        long_text = "这是一段很长的文本。" * 500
-
-        compressed = await compressor.compress_context(long_text, token_limit=100)
-
-        assert len(compressed) < len(long_text)
-        assert isinstance(compressed, str)
+    def test_compressor_exposes_only_active_api(self, compressor):
+        assert hasattr(compressor, "extract_facts")
+        assert hasattr(compressor, "merge_facts")
+        assert hasattr(compressor, "summarize_interactions")
+        assert not hasattr(compressor, "compress_context")
 
     async def test_merge_facts_with_literal_duplicates_prefers_higher_confidence(self):
         checker = ScriptedCompressorChecker()
@@ -290,7 +281,3 @@ class TestCompressorEdgeCases:
         existing = [Fact(content="测试", source_node_id="node_1")]
         merged = await compressor.merge_facts(existing, [])
         assert len(merged) == 1
-
-    async def test_compress_context_edge_cases(self, compressor):
-        assert await compressor.compress_context("", 100) == ""
-        assert await compressor.compress_context("A", 100) == "A"

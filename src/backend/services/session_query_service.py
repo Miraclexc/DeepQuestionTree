@@ -33,6 +33,11 @@ class SessionQueryService:
     async def get_status(self) -> SystemStatusResponse:
         active_session = self._coordinator.active_session
         response = SystemStatusResponse(
+            single_session_mode=getattr(
+                self._coordinator,
+                "single_session_mode",
+                True,
+            ),
             mcts_running=self._coordinator.mcts_running,
             has_active_session=active_session is not None,
             active_session_id=active_session.session_id if active_session else None,

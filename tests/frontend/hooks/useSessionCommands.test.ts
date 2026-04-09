@@ -73,6 +73,7 @@ describe("useSessionCommands", () => {
         );
         expect(invalidateResourceMock).toHaveBeenCalledWith("system-status");
         expect(invalidateResourceMock).toHaveBeenCalledWith("sessions");
+        expect(invalidateResourcePrefixMock).toHaveBeenCalledWith("session:");
         expect(invalidateResourcePrefixMock).toHaveBeenCalledWith("tree:");
         expect(invalidateResourcePrefixMock).toHaveBeenCalledWith("report:");
         expect(refreshSessions).toHaveBeenCalled();
@@ -167,6 +168,7 @@ describe("useSessionCommands", () => {
             await result.current.resumeSession({
                 session_id: "session-2",
                 global_goal: "Map data center power constraints",
+                is_legacy_token_accounting: false,
             });
         });
 
@@ -177,11 +179,36 @@ describe("useSessionCommands", () => {
         );
         expect(invalidateResourceMock).toHaveBeenCalledWith("system-status");
         expect(invalidateResourceMock).toHaveBeenCalledWith("sessions");
+        expect(invalidateResourcePrefixMock).toHaveBeenCalledWith("session:");
         expect(invalidateResourcePrefixMock).toHaveBeenCalledWith("tree:");
         expect(invalidateResourcePrefixMock).toHaveBeenCalledWith("report:");
         expect(refreshSessions).toHaveBeenCalled();
         expect(refreshStatus).toHaveBeenCalled();
         expect(onResetWorkspacePanels).toHaveBeenCalled();
         expect(onSelectSession).toHaveBeenCalledWith("session-2");
+    });
+
+    it("ignores direct resume requests for legacy sessions", async () => {
+        const { result } = renderHook(() =>
+            useSessionCommands({
+                currentSessionId: "session-1",
+                refreshSessions: vi.fn().mockResolvedValue(undefined),
+                refreshStatus: vi.fn().mockResolvedValue(undefined),
+                onSelectSession: vi.fn(),
+                onOpenReport: vi.fn(),
+                onResetWorkspacePanels: vi.fn(),
+                onResetCurrentSession: vi.fn(),
+            }),
+        );
+
+        await act(async () => {
+            await result.current.resumeSession({
+                session_id: "session-legacy",
+                global_goal: "Legacy report",
+                is_legacy_token_accounting: true,
+            });
+        });
+
+        expect(startSessionApiMock).not.toHaveBeenCalled();
     });
 });

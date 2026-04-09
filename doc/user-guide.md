@@ -1,6 +1,6 @@
 # User Guide
 
-> Last Updated: 2026-04-08
+> Last Updated: 2026-04-09
 >
 > 本页唯一负责：面向本地使用者说明如何启动并使用 DeepQuestionTree 工作台。
 
@@ -132,6 +132,11 @@ npm run dev
 - 当前打开的 `Node Details` 和 `Exploration Report` 会先关闭；
 - 主区域会回到树工作台，并重新选中该会话。
 
+补充说明：
+
+- 升级前创建的 legacy 会话不会显示 `Resume Session`
+- legacy 会话仍可查看历史树、缓存报告和删除，但不会再继续运行
+
 ### 4.3 查看节点详情
 
 在树上点击节点后，右侧会打开 `Node Details` 面板，里面会展示：
@@ -162,6 +167,11 @@ npm run dev
 - 主报告内容
 - `Pruned Paths & Dead Ends`
 - `LLM Utilization`
+
+legacy 会话限制：
+
+- 如果该会话当前版本已经有缓存报告，仍可直接打开查看
+- 如果没有当前版本缓存报告，`Generate Report` 会保持禁用，因为 legacy 会话不会再触发新的报告生成
 
 ### 4.5 导出报告
 

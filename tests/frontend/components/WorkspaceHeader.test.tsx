@@ -21,6 +21,7 @@ describe("WorkspaceHeader", () => {
             React.createElement(WorkspaceHeader, {
                 currentSession: sessionSummariesFixture[0],
                 currentSessionId: "session-1",
+                canGenerateReport: true,
                 onGenerateReport,
                 onStopAndReport,
             }),
@@ -45,6 +46,7 @@ describe("WorkspaceHeader", () => {
             React.createElement(WorkspaceHeader, {
                 currentSession: sessionSummariesFixture[0],
                 currentSessionId: "session-1",
+                canGenerateReport: true,
                 onGenerateReport: vi.fn(),
                 onStopAndReport,
             }),
@@ -60,6 +62,7 @@ describe("WorkspaceHeader", () => {
             React.createElement(WorkspaceHeader, {
                 currentSession: null,
                 currentSessionId: null,
+                canGenerateReport: false,
                 onGenerateReport: vi.fn(),
                 onStopAndReport: vi.fn(),
             }),
@@ -67,5 +70,29 @@ describe("WorkspaceHeader", () => {
 
         expect(screen.getByText("Deep Question Tree")).toBeInTheDocument();
         expect(screen.queryByRole("button", { name: "Generate Report" })).not.toBeInTheDocument();
+    });
+
+    it("disables generate report when legacy session has no reusable report", () => {
+        render(
+            React.createElement(WorkspaceHeader, {
+                currentSession: {
+                    ...sessionSummariesFixture[1],
+                    is_legacy_token_accounting: true,
+                },
+                currentSessionId: "session-2",
+                canGenerateReport: false,
+                generateReportDisabledReason: "Legacy sessions without cached reports are read-only.",
+                onGenerateReport: vi.fn(),
+                onStopAndReport: vi.fn(),
+            }),
+        );
+
+        expect(screen.getByRole("button", { name: "Generate Report" })).toBeDisabled();
+        expect(
+            screen.getByRole("button", { name: "Generate Report" }),
+        ).toHaveAttribute(
+            "title",
+            "Legacy sessions without cached reports are read-only.",
+        );
     });
 });

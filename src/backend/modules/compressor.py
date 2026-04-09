@@ -1,6 +1,6 @@
 """
 压缩模块
-负责上下文压缩和事实提取
+负责事实提取、事实合并和交互摘要
 """
 
 import re
@@ -86,44 +86,6 @@ class Compressor:
         except Exception as e:
             logger.error(f"提取事实失败: {e}")
             return [], 0, "unknown"
-
-    async def compress_context(self, context: str, token_limit: int = 2000) -> str:
-        """
-        压缩上下文，保留最重要的信息
-
-        Args:
-            context: 原始上下文
-            token_limit: Token 限制
-
-        Returns:
-            str: 压缩后的上下文
-        """
-        # 粗略估算 Token 数（中文字符）
-        estimated_tokens = len(context)
-
-        if estimated_tokens <= token_limit:
-            return context  # 不需要压缩
-
-        try:
-            # 渲染压缩 Prompt
-            prompt = self.prompts.render(
-                "compress_context", context=context, token_limit=token_limit
-            )
-
-            # 调用 LLM 压缩
-            messages = [{"role": "user", "content": prompt}]
-            compressed_response = await self.llm.chat_completion(
-                messages=messages,
-                temperature=0.3,
-                purpose="generation",
-            )
-
-            return compressed_response.content.strip()
-
-        except Exception as e:
-            logger.error(f"压缩上下文失败: {e}")
-            # 降级处理：简单截断
-            return context[: token_limit * 2] + "..."
 
     async def merge_facts(
         self,

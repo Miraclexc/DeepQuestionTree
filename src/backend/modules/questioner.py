@@ -1,12 +1,10 @@
 """
 提问模块
-负责生成候选问题、评估问题价值、检测重复问题
+负责生成候选问题、评估问题价值并回答问题
 """
 
-import re
 from typing import List
 
-from ..config_loader import get_settings
 from ..core.schema import Fact
 from ..llm.client_interface import BaseLLMClient
 from ..llm.prompt_manager import get_prompt_manager
@@ -34,9 +32,6 @@ class Questioner:
         self.llm = llm_client
         self.prompts = prompt_manager or get_prompt_manager()
         self.checker = checker or Checker(llm_client, prompt_manager=self.prompts)
-        self.settings = get_settings()
-
-        # 维护历史问题库（用于去重）
         self.history_questions: List[str] = []
 
     async def generate_candidates(
@@ -182,93 +177,6 @@ class Questioner:
         except Exception as e:
             logger.error(f"回答问题失败: {e}")
             return "Error generating answer.", 0, "unknown"
-
-    async def check_duplicate(
-        self,
-        question: str,
-        threshold: float | None = None,
-    ) -> bool:
-        """
-        检查问题是否重复
-
-        Args:
-            question: 待检查的问题
-            threshold: 相似度阈值
-
-        Returns:
-            bool: 是否重复
-        """
-        del threshold
-
-        question = question.strip()
-        if not question:
-            return False
-
-        if not self.history_questions:
-            # 第一个问题，记录并返回不重复
-            await self._add_to_history(question)
-            return False
-
-        review = await self.checker.review_question(
-            question=question,
-            goal="",
-            history_questions=self.history_questions,
-            stage="pre",
-        )
-        is_duplicate = review.is_duplicate
-
-        if not is_duplicate:
-            # 不重复，加入历史
-            await self._add_to_history(question)
-
-        return is_duplicate
-
-    async def _add_to_history(self, question: str) -> None:
-        """添加问题到历史记录"""
-        self.history_questions.append(question)
-        max_history = self.settings.checker.question_history_window
-        if len(self.history_questions) > max_history:
-            self.history_questions = self.history_questions[-max_history:]
-
-    def _extract_questions_from_text(self, text: str) -> List[str]:
-        """从文本中提取问题列表"""
-        # 尝试匹配引号或编号列表中的问题
-        questions = []
-
-        # 匹配引号中的问题
-        quoted = re.findall(r'["\"]([^"\"]{10,})["\"]', text)
-        questions.extend(quoted)
-
-        # 匹配编号列表
-        numbered = re.findall(r"^\d+\.\s*(.+)$", text, re.MULTILINE)
-        questions.extend([q.strip() for q in numbered if len(q.strip()) > 10])
-
-        # 匹配问号结尾的句子（改进版，支持中文和英文问号）
-        sentences = re.findall(r"([^\n.!。！]*[?？]+)", text)
-        questions.extend([s.strip() for s in sentences if len(s.strip()) > 5])
-
-        # 去重并返回
-        unique_questions = list(dict.fromkeys(questions))  # 保持顺序的去重
-        return unique_questions[:3]  # 最多返回3个
-
-    def _extract_score(self, response: str) -> float:
-        """从响应中提取分数"""
-        import json
-        import re
-
-        try:
-            data = json.loads(response)
-            if isinstance(data, dict) and "score" in data:
-                return float(data["score"])
-        except Exception:
-            pass
-
-        numbers = re.findall(r"\d+(?:\.\d+)?", response)
-        if numbers:
-            return float(numbers[0])
-
-        # 默认分数
-        return 5.0
 
     def _get_default_questions(self, k: int) -> List[str]:
         """获取默认问题列表"""

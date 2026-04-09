@@ -25,8 +25,10 @@ describe("DeepQuestionTree", () => {
         useDeepQuestionTreeMock.mockReturnValue({
             currentSession: sessionSummariesFixture[0],
             currentSessionId: null,
+            canGenerateReport: true,
             draftGoal: "Draft goal",
             error: "Something failed",
+            generateReportDisabledReason: undefined,
             isGeneratingReport: false,
             isNewSessionDialogOpen: true,
             isLoadingTree: false,

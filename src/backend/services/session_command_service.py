@@ -7,6 +7,7 @@ from ..config_loader import get_settings
 from ..core.schema import Node, QAInteraction, SessionData, SessionStatus
 from ..utils.logger import get_logger
 from .coordinator import RuntimeCoordinator
+from .errors import RuntimeConflictError
 from .module_factory import RuntimeModuleFactory
 from .session_repository import SessionRepository
 
@@ -43,6 +44,11 @@ class SessionCommandService:
 
         if session_id:
             session = await self._repository.get_session(session_id)
+            if session.is_legacy_token_accounting:
+                raise RuntimeConflictError(
+                    "Legacy sessions cannot be resumed after token accounting upgrade.",
+                    code="legacy_session_resume_unsupported",
+                )
             session.status = SessionStatus.RUNNING
             session.error_message = None
             session.updated_at = datetime.now()

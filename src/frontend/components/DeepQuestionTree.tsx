@@ -16,8 +16,10 @@ export default function DeepQuestionTree() {
     const {
         currentSession,
         currentSessionId,
+        canGenerateReport,
         draftGoal,
         error,
+        generateReportDisabledReason,
         isGeneratingReport,
         isNewSessionDialogOpen,
         isLoadingTree,
@@ -60,6 +62,8 @@ export default function DeepQuestionTree() {
                 <WorkspaceHeader
                     currentSession={currentSession}
                     currentSessionId={currentSessionId}
+                    canGenerateReport={canGenerateReport}
+                    generateReportDisabledReason={generateReportDisabledReason}
                     onGenerateReport={onGenerateReport}
                     onStopAndReport={onStopAndReport}
                 />

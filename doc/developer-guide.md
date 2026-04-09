@@ -1,6 +1,6 @@
 # Developer Guide
 
-> Last Updated: 2026-04-08
+> Last Updated: 2026-04-09
 >
 > 本页唯一负责：面向开发者说明环境基线、目录职责、调试入口、变更同步点和文档维护规则。
 
@@ -94,7 +94,13 @@ npm run dev
 - `data/sessions/deepquestiontree.sqlite3`
 - `data/logs`
 
-提交代码前不要把新的运行产物带入版本库。
+当前真实职责：
+
+- `data/sessions/deepquestiontree.sqlite3` 是唯一活跃会话持久化载体
+- `data/sessions/*.json` 旧快照不再属于运行主链路
+- `data/logs/` 只存放本地轮转日志，不应被当作工程输入
+
+提交代码前不要把新的运行产物带入版本库，也不要把本地日志或旧快照误判为需要维护的“项目数据”。
 
 ## 4. Configuration Boundaries
 
@@ -109,6 +115,7 @@ npm run dev
 - 后端配置加载实现在 [`../src/backend/config_loader.py`](../src/backend/config_loader.py)
 - 后端不会读取 `src/frontend/.env.local`
 - 前端只读取自己的 `NEXT_PUBLIC_*` 环境变量
+- 后端已不再维护 `app.api_host`；浏览器访问地址仍由前端 `NEXT_PUBLIC_API_HOST` / `NEXT_PUBLIC_API_PORT` 决定
 - Bearer Token 后端来源是 `security.api_token` 或 `SECURITY__API_TOKEN`
 - 浏览器端优先使用 `localStorage["dqt.apiToken"]`
 - 会话和报告缓存统一落在 `storage.session_db_path`
@@ -117,6 +124,7 @@ npm run dev
 - 默认真实 provider 为 Deepseek，经由 OpenAI-compatible client 接入
 - 默认 `llm.generation_model=deepseek-chat`、`llm.decision_model=deepseek-reasoner`
 - `RuntimeModuleFactory` 会在真实 provider 模式启动前预检 `llm.api_key`、`llm.base_url`、`llm.generation_model` 和 `llm.decision_model`
+- 新 token 账本字段 `llm_usage` 和 `token_accounting_version` 持久化在 session JSON 中；`sessions` 摘要表额外保留 `token_accounting_version` 供列表页判断 legacy gating
 
 ## 5. Change Synchronization Points
 
@@ -131,6 +139,12 @@ npm run dev
 - [`./application-layer-and-auth.md`](./application-layer-and-auth.md)
 
 如果新增或重命名 session-scoped 路由，必须同时更新文档中的 endpoint matrix。
+
+如果改到 `SessionSummary` / `SessionReadModel` 的 token 统计字段（如 `is_legacy_token_accounting`、`total_tokens_used` 或报告可用性 gating），必须同步检查：
+
+- [`../src/frontend/components/sidebar/SessionListItem.tsx`](../src/frontend/components/sidebar/SessionListItem.tsx)
+- [`../src/frontend/components/workspace/WorkspaceHeader.tsx`](../src/frontend/components/workspace/WorkspaceHeader.tsx)
+- [`../src/frontend/hooks/useDeepQuestionTree.ts`](../src/frontend/hooks/useDeepQuestionTree.ts)
 
 ### 5.2 改前端数据流时
 
@@ -168,6 +182,7 @@ npm run dev
 - [`../src/backend/modules/checker.py`](../src/backend/modules/checker.py)
 - [`../src/backend/llm/client_interface.py`](../src/backend/llm/client_interface.py)
 - [`../src/backend/llm/llm_client.py`](../src/backend/llm/llm_client.py)
+- [`../src/backend/llm/usage_tracking.py`](../src/backend/llm/usage_tracking.py)
 - [`../config/settings.yaml`](../config/settings.yaml)
 - [`../.env.example`](../.env.example)
 - [`../config/prompts.yaml`](../config/prompts.yaml)
@@ -181,7 +196,9 @@ npm run dev
 
 - `PromptManager` 使用 Jinja `StrictUndefined`；改 prompt 变量时必须同步更新 `tests/unit/test_prompt_manager.py`
 - `config/prompts.yaml` 只保留活跃调用项，不要保留未使用 prompt
+- 当前已移除未接入运行链路的 `compress_context` prompt；不要重新引入“仅测试存在”的 prompt 漂移
 - `src/frontend/vitest.config.ts` 中 `@testing-library/*` 只允许稳定包入口 alias，不要再指向包内部 `dist` 路径
+- 会话级 token 统计现在必须在 LLM client 边界自动上报；不要再在 questioner/checker/compressor/integrator 里手工累加 session 总 token
 
 ## 6. Quality And Validation
 

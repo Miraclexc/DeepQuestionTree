@@ -1,6 +1,6 @@
 """
 单元测试 - Questioner 模块
-测试问题生成、价值评估、重复检测功能
+测试问题生成、价值评估与回答功能
 """
 
 from types import SimpleNamespace
@@ -69,7 +69,7 @@ class SequenceQuestionerChecker:
 
 @pytest.mark.unit
 class TestQuestioner:
-    """测试提问者模块"""
+    """测试提问者模块当前活跃链路。"""
 
     @pytest.fixture
     def questioner(self, mock_llm_client):
@@ -109,70 +109,13 @@ class TestQuestioner:
         assert len(questions_1) <= 1
         assert len(questions_5) <= 5
 
-    async def test_check_duplicate_identical_question(self):
-        checker = SequenceQuestionerChecker(
-            reviews=[
-                {
-                    "is_duplicate": True,
-                    "should_prune": True,
-                    "reason": "问题重复",
-                }
-            ]
-        )
-        questioner = Questioner(ContractAwareQuestionerLLM([]), checker=checker)
-        question = "这是一个测试问题"
-
-        assert await questioner.check_duplicate(question) is False
-        assert await questioner.check_duplicate(question) is True
-        assert len(questioner.history_questions) == 1
-        assert checker.calls[0]["history_questions"] == [question]
-
-    async def test_check_duplicate_different_questions(self):
-        checker = SequenceQuestionerChecker(
-            reviews=[
-                {
-                    "is_duplicate": False,
-                    "should_prune": False,
-                }
-            ]
-        )
-        questioner = Questioner(ContractAwareQuestionerLLM([]), checker=checker)
-
-        await questioner.check_duplicate("深度学习的原理是什么？")
-        is_duplicate = await questioner.check_duplicate("Transformer 架构如何工作？")
-
-        assert is_duplicate is False
-        assert len(questioner.history_questions) == 2
-
-    async def test_history_limit_uses_checker_window(self):
-        checker = SequenceQuestionerChecker(
-            reviews=[{"is_duplicate": False, "should_prune": False}] * 60
-        )
-        questioner = Questioner(ContractAwareQuestionerLLM([]), checker=checker)
-
-        for i in range(60):
-            await questioner.check_duplicate(f"测试问题 {i}")
-
-        assert len(questioner.history_questions) <= 50
-
-    def test_extract_questions_from_text(self, questioner):
-        text = """
-        1. 深度学习的核心原理是什么？
-        2. Transformer 如何工作？
-        "什么是注意力机制？"
-        这是一个陈述句。
-        """
-
-        questions = questioner._extract_questions_from_text(text)
-
-        assert isinstance(questions, list)
-        assert len(questions) > 0
-
-    def test_extract_score_from_response(self, questioner):
-        assert questioner._extract_score("8") == 8.0
-        assert questioner._extract_score("评分：7.5 分") == 7.5
-        assert questioner._extract_score('{"score": 9, "reason": "高价值"}') == 9.0
-        assert questioner._extract_score("无法解析") == 5.0
+    def test_questioner_exposes_only_active_api(self, questioner):
+        assert hasattr(questioner, "generate_candidates")
+        assert hasattr(questioner, "evaluate_question_value")
+        assert hasattr(questioner, "answer_question")
+        assert not hasattr(questioner, "check_duplicate")
+        assert not hasattr(questioner, "_extract_questions_from_text")
+        assert not hasattr(questioner, "_extract_score")
 
     def test_get_default_questions(self, questioner):
         questions = questioner._get_default_questions(k=3)
@@ -227,6 +170,30 @@ class TestQuestioner:
         assert checker.calls[0]["stage"] == "score"
         assert score == 8.0
 
+    async def test_answer_question_uses_generation_purpose(self):
+        llm_client = ContractAwareQuestionerLLM(
+            [
+                {
+                    "content": "这里是回答",
+                    "tokens": 42,
+                    "model": "answer-model",
+                }
+            ]
+        )
+        questioner = Questioner(llm_client, checker=SequenceQuestionerChecker())
+
+        answer, tokens, model = await questioner.answer_question(
+            question="这个问题如何回答？",
+            context_facts=[],
+            goal="测试目标",
+        )
+
+        assert llm_client.calls[0]["response_contract"] == "text"
+        assert llm_client.calls[0]["purpose"] == "generation"
+        assert answer == "这里是回答"
+        assert tokens == 42
+        assert model == "answer-model"
+
 
 @pytest.mark.unit
 class TestQuestionerEdgeCases:
@@ -255,8 +222,3 @@ class TestQuestionerEdgeCases:
         )
 
         assert 0.0 <= score <= 10.0
-
-    async def test_check_duplicate_empty_string(self, questioner):
-        is_duplicate = await questioner.check_duplicate("")
-
-        assert isinstance(is_duplicate, bool)

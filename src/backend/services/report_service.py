@@ -4,7 +4,8 @@ from datetime import UTC, datetime
 
 from ..api.dto import ReportResponse, build_report_response
 from ..config_loader import get_settings
-from ..core.schema import SessionData
+from ..core.schema import SessionData, SessionLlmUsage
+from ..llm.usage_tracking import LlmUsageRecorder, bind_usage_recorder
 from ..utils.logger import get_logger
 from .coordinator import RuntimeCoordinator
 from .errors import ReportGenerationError
@@ -13,6 +14,11 @@ from .session_query_service import SessionQueryService
 from .session_repository import SessionRepository
 
 logger = get_logger(__name__)
+
+LEGACY_REPORT_ERROR_MESSAGE = (
+    "Legacy sessions without cached reports are read-only after the token "
+    "accounting upgrade."
+)
 
 
 class ReportService:
@@ -43,9 +49,37 @@ class ReportService:
             ):
                 return build_report_response(snapshot, cached_report.report)
 
+        if snapshot.is_legacy_token_accounting:
+            return build_report_response(
+                snapshot,
+                {
+                    "session_id": snapshot.session_id,
+                    "goal": snapshot.global_goal,
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "error_message": LEGACY_REPORT_ERROR_MESSAGE,
+                },
+            )
+
+        recorder = LlmUsageRecorder()
+        raw_report: dict[str, object] | None = None
+        report_error: ReportGenerationError | None = None
         try:
-            raw_report = await self._generate_report_payload(session_id, snapshot)
-            normalized = build_report_response(snapshot, raw_report)
+            with bind_usage_recorder(recorder):
+                raw_report = await self._generate_report_payload(session_id, snapshot)
+        except ReportGenerationError as exc:
+            report_error = exc
+        usage_delta = recorder.snapshot()
+        if not usage_delta.is_empty():
+            snapshot.merge_llm_usage(usage_delta)
+            await self._persist_report_usage_delta(session_id, snapshot, usage_delta)
+
+        try:
+            if report_error is not None:
+                raise report_error
+
+            report_payload = dict(raw_report or {})
+            report_payload["llm_stats"] = snapshot.llm_usage.to_report_payload()
+            normalized = build_report_response(snapshot, report_payload)
         except ReportGenerationError as exc:
             logger.warning(
                 "报告生成失败，返回稳定 DTO: session_id=%s detail=%s",
@@ -59,6 +93,7 @@ class ReportService:
                     "goal": snapshot.global_goal,
                     "generated_at": datetime.now(UTC).isoformat(),
                     "error_message": exc.detail,
+                    "llm_stats": snapshot.llm_usage.to_report_payload(),
                 },
             )
 
@@ -70,6 +105,25 @@ class ReportService:
                 normalized.model_dump(mode="json"),
             )
         return normalized
+
+    async def _persist_report_usage_delta(
+        self,
+        session_id: str,
+        snapshot: SessionData,
+        usage_delta: SessionLlmUsage,
+    ) -> None:
+        active_snapshot = await self._coordinator.merge_report_usage(
+            session_id=session_id,
+            usage_delta=usage_delta,
+        )
+        if active_snapshot is not None:
+            return
+
+        current_session = await self._query_service.load_session(session_id)
+        if current_session.session_version != snapshot.session_version:
+            return
+        current_session.merge_llm_usage(usage_delta)
+        await self._repository.save_session(current_session)
 
     def _resolve_integrator(self, session_id: str):
         active_session = self._coordinator.active_session

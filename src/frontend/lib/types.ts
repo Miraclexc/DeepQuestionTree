@@ -49,6 +49,7 @@ export interface SessionSummary {
     created_at: string;
     updated_at: string;
     status: string;
+    is_legacy_token_accounting: boolean;
     total_simulations: number;
     total_nodes: number;
     total_facts: number;
@@ -61,6 +62,7 @@ export interface SessionDetails {
     global_goal: string;
     total_simulations: number;
     total_tokens_used: number;
+    is_legacy_token_accounting: boolean;
     created_at: string;
     updated_at: string;
     status: string;

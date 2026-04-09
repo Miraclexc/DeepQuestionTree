@@ -51,6 +51,7 @@ class SessionSummary(BaseModel):
     created_at: datetime
     updated_at: datetime
     status: str
+    is_legacy_token_accounting: bool = False
     total_simulations: int
     total_nodes: int
     total_facts: int
@@ -63,6 +64,7 @@ class SessionReadModel(BaseModel):
     global_goal: str
     total_simulations: int
     total_tokens_used: int
+    is_legacy_token_accounting: bool = False
     created_at: datetime
     updated_at: datetime
     status: str
@@ -224,6 +226,7 @@ def build_session_read_model(
         global_goal=session.global_goal,
         total_simulations=session.total_simulations,
         total_tokens_used=session.total_tokens_used,
+        is_legacy_token_accounting=session.is_legacy_token_accounting,
         created_at=session.created_at,
         updated_at=session.updated_at,
         status=(
@@ -382,7 +385,9 @@ def build_report_response(
     llm_stats = llm_stats_payload if isinstance(llm_stats_payload, Mapping) else {}
     usage_by_model_payload = llm_stats.get("usage_by_model")
     usage_by_model = (
-        usage_by_model_payload if isinstance(usage_by_model_payload, Mapping) else {}
+        usage_by_model_payload
+        if isinstance(usage_by_model_payload, Mapping)
+        else session.llm_usage.to_report_payload().get("usage_by_model", {})
     )
 
     return ReportResponse(
@@ -407,8 +412,14 @@ def build_report_response(
             ),
         ),
         llm_stats=ReportLlmStatsResponse(
-            total_calls=_safe_int(llm_stats.get("total_calls"), 0),
-            total_tokens=_safe_int(llm_stats.get("total_tokens"), 0),
+            total_calls=_safe_int(
+                llm_stats.get("total_calls"),
+                session.llm_usage.total_calls,
+            ),
+            total_tokens=_safe_int(
+                llm_stats.get("total_tokens"),
+                session.llm_usage.total_tokens,
+            ),
             usage_by_model={
                 str(model): LlmUsageStatsResponse(
                     calls=_safe_int(data.get("calls"), 0),

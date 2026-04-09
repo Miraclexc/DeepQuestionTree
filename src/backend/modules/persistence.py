@@ -12,12 +12,12 @@ from pathlib import Path
 from typing import Any, Optional
 
 from ..config_loader import get_settings
-from ..core.schema import SessionData
+from ..core.schema import CURRENT_TOKEN_ACCOUNTING_VERSION, SessionData
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class SessionManager:
@@ -31,7 +31,7 @@ class SessionManager:
         configured_path = db_path or self.settings.storage.session_db_path
         self.db_path = Path(configured_path)
         self._last_saved_signatures: dict[
-            str, tuple[int, int, int, int, str, str | None]
+            str, tuple[int, int, int, int, str, str | None, str]
         ] = {}
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize_database()
@@ -52,6 +52,11 @@ class SessionManager:
                     else str(session.status)
                 ),
                 session.error_message,
+                json.dumps(
+                    session.llm_usage.model_dump(mode="json"),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
             )
             if self._last_saved_signatures.get(session.session_id) == signature:
                 logger.debug(
@@ -78,6 +83,7 @@ class SessionManager:
                 session.session_version,
                 session.total_simulations,
                 session.total_tokens_used,
+                session.token_accounting_version,
                 session.get_total_nodes(),
                 len(session.global_facts),
             )
@@ -96,10 +102,11 @@ class SessionManager:
                         session_version,
                         total_simulations,
                         total_tokens_used,
+                        token_accounting_version,
                         total_nodes,
                         total_facts
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(session_id) DO UPDATE SET
                         session_json = excluded.session_json,
                         global_goal = excluded.global_goal,
@@ -111,6 +118,7 @@ class SessionManager:
                         session_version = excluded.session_version,
                         total_simulations = excluded.total_simulations,
                         total_tokens_used = excluded.total_tokens_used,
+                        token_accounting_version = excluded.token_accounting_version,
                         total_nodes = excluded.total_nodes,
                         total_facts = excluded.total_facts
                     """,
@@ -131,7 +139,11 @@ class SessionManager:
         try:
             with self._connect() as connection:
                 row = connection.execute(
-                    "SELECT session_json FROM sessions WHERE session_id = ?",
+                    """
+                    SELECT session_json, token_accounting_version
+                    FROM sessions
+                    WHERE session_id = ?
+                    """,
                     (session_id,),
                 ).fetchone()
             if row is None:
@@ -139,6 +151,10 @@ class SessionManager:
                 return None
 
             session_data = json.loads(row["session_json"])
+            if "token_accounting_version" not in session_data:
+                session_data["token_accounting_version"] = int(
+                    row["token_accounting_version"] or 1
+                )
             session = SessionData.model_validate(session_data)
             session.recalculate_total_tokens_used(touch=False)
             logger.info("会话 %s 已从 SQLite 加载", session_id)
@@ -186,6 +202,7 @@ class SessionManager:
                         total_simulations,
                         total_nodes,
                         total_facts,
+                        token_accounting_version,
                         length(CAST(session_json AS BLOB)) AS file_size
                     FROM sessions
                     ORDER BY updated_at DESC
@@ -304,7 +321,7 @@ class SessionManager:
             current_version = int(
                 connection.execute("PRAGMA user_version").fetchone()[0]
             )
-            if current_version not in (0, SCHEMA_VERSION):
+            if current_version not in (0, 1, SCHEMA_VERSION):
                 raise RuntimeError(
                     f"Unsupported SQLite schema version: {current_version}"
                 )
@@ -323,11 +340,14 @@ class SessionManager:
                     session_version INTEGER NOT NULL,
                     total_simulations INTEGER NOT NULL,
                     total_tokens_used INTEGER NOT NULL,
+                    token_accounting_version INTEGER NOT NULL DEFAULT 1,
                     total_nodes INTEGER NOT NULL,
                     total_facts INTEGER NOT NULL
                 )
                 """
             )
+            if current_version == 1:
+                self._migrate_v1_to_v2(connection)
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS reports (
@@ -349,6 +369,27 @@ class SessionManager:
             )
             connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             connection.commit()
+
+    def _migrate_v1_to_v2(self, connection: sqlite3.Connection) -> None:
+        columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(sessions)").fetchall()
+        }
+        if "token_accounting_version" not in columns:
+            connection.execute(
+                """
+                ALTER TABLE sessions
+                ADD COLUMN token_accounting_version INTEGER NOT NULL DEFAULT 1
+                """
+            )
+        connection.execute(
+            """
+            UPDATE sessions
+            SET token_accounting_version = ?
+            WHERE token_accounting_version IS NULL OR token_accounting_version = 0
+            """,
+            (CURRENT_TOKEN_ACCOUNTING_VERSION - 1,),
+        )
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.db_path)

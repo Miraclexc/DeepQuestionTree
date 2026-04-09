@@ -35,7 +35,6 @@ class AppConfig(BaseModel):
     env: str = "development"
     api_port: int = 8001
     frontend_port: int = 3000
-    api_host: str = "http://localhost"
     frontend_host: str = "http://localhost"
 
 

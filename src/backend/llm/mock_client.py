@@ -14,6 +14,7 @@ from .client_interface import (
     ResponseContract,
     parse_structured_content,
 )
+from .usage_tracking import record_usage_for_current_request
 
 
 class MockClient(BaseLLMClient):
@@ -26,6 +27,7 @@ class MockClient(BaseLLMClient):
         self.total_tokens_used = 0
         self.total_cost = 0.0
         self.request_count = 0
+        self.usage_by_model: dict[str, dict[str, int]] = {}
 
         # 预设的 Mock 响应库
         self.mock_questions = [
@@ -64,6 +66,13 @@ class MockClient(BaseLLMClient):
         self.request_count += 1
         tokens = random.randint(100, 500)
         self.total_tokens_used += tokens
+        usage_stats = self.usage_by_model.setdefault(
+            "mock-model",
+            {"calls": 0, "tokens": 0},
+        )
+        usage_stats["calls"] += 1
+        usage_stats["tokens"] += tokens
+        record_usage_for_current_request("mock-model", tokens)
 
         # 获取最后一条消息
         last_msg = messages[-1]["content"] if messages else ""
@@ -146,6 +155,7 @@ class MockClient(BaseLLMClient):
             "total_requests": self.request_count,
             "average_tokens_per_request": self.total_tokens_used
             / max(self.request_count, 1),
+            "usage_by_model": self.usage_by_model,
             "note": "这是 Mock 客户端，没有真实的 Token 消耗",
         }
 
@@ -154,6 +164,7 @@ class MockClient(BaseLLMClient):
         self.total_tokens_used = 0
         self.total_cost = 0.0
         self.request_count = 0
+        self.usage_by_model = {}
 
     def _build_json_array_content(self, last_msg: str) -> str:
         if (

@@ -44,10 +44,6 @@ ACTIVE_PROMPT_FIXTURES: dict[str, dict[str, object]] = {
         "main_paths": "- 路径 1",
         "key_insights": "- 见解 1",
     },
-    "compress_context": {
-        "context": "很长的上下文",
-        "token_limit": 1000,
-    },
     "extract_key_insights": {
         "facts_text": "- 事实 1\n- 事实 2",
     },

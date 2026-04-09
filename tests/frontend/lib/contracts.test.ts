@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
     normalizeNodeDetail,
     normalizeReportData,
+    normalizeSessionDetails,
     normalizeSessionSummaries,
     normalizeSystemStatus,
     normalizeTreeResponse,
@@ -17,6 +18,7 @@ describe("contracts normalization", () => {
                 created_at: "2026-04-04T10:00:00Z",
                 updated_at: "2026-04-04T10:05:00Z",
                 status: "running",
+                is_legacy_token_accounting: false,
                 total_simulations: 2,
                 total_nodes: 3,
                 total_facts: 4,
@@ -40,6 +42,7 @@ describe("contracts normalization", () => {
                 created_at: "",
                 updated_at: "",
                 status: "",
+                is_legacy_token_accounting: false,
                 total_simulations: 0,
                 total_nodes: 0,
                 total_facts: 0,
@@ -150,6 +153,26 @@ describe("contracts normalization", () => {
             visits: 1,
             value: 0,
         });
+    });
+
+    it("normalizes session details with legacy token accounting metadata", () => {
+        const details = normalizeSessionDetails({
+            session_id: "session-1",
+            root_node_id: "root",
+            global_goal: "goal",
+            total_simulations: 2,
+            total_tokens_used: 123,
+            created_at: "2026-04-04T10:00:00Z",
+            updated_at: "2026-04-04T10:05:00Z",
+            status: "completed",
+            report_available: true,
+            is_active: false,
+            is_legacy_token_accounting: true,
+        });
+
+        expect(details.is_legacy_token_accounting).toBe(true);
+        expect(details.report_available).toBe(true);
+        expect(details.total_tokens_used).toBe(123);
     });
 
     it("normalizes report data with legacy partial payload fallback", () => {

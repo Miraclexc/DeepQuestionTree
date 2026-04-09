@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable
 from datetime import datetime
 
 from ..config_loader import get_settings
 from ..core.mcts_engine import MCTSEngine
-from ..core.schema import SessionData, SessionStatus
+from ..core.schema import SessionData, SessionLlmUsage, SessionStatus
 from ..utils.logger import get_logger, session_id_ctx
 from .errors import RuntimeConflictError
 from .module_factory import RuntimeModules
@@ -50,6 +49,29 @@ class RuntimeCoordinator:
     @property
     def integrator(self):
         return self._modules.integrator if self._modules is not None else None
+
+    async def merge_report_usage(
+        self,
+        *,
+        session_id: str,
+        usage_delta: SessionLlmUsage,
+    ) -> SessionData | None:
+        if usage_delta.is_empty():
+            return None
+
+        snapshot: SessionData | None = None
+        async with self._commit_lock:
+            if (
+                self._active_session is None
+                or self._active_session.session_id != session_id
+            ):
+                return None
+            self._active_session.merge_llm_usage(usage_delta)
+            snapshot = self._active_session.model_copy(deep=True)
+
+        if snapshot is not None:
+            await self._repository.save_session(snapshot)
+        return snapshot
 
     async def activate_session(
         self,

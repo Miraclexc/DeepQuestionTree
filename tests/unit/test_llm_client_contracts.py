@@ -6,6 +6,7 @@ import pytest
 from src.backend.llm.client_interface import StructuredOutputContractError
 from src.backend.llm.llm_client import OpenAICompatibleClient
 from src.backend.llm.mock_client import MockClient
+from src.backend.llm.usage_tracking import LlmUsageRecorder, bind_usage_recorder
 
 
 def _build_chat_response(content: str, tokens: int = 32):
@@ -29,6 +30,7 @@ def _build_openai_client(fake_create):
     client.total_tokens_used = 0
     client.total_cost = 0.0
     client.request_count = 0
+    client.usage_by_model = {}
     return client
 
 
@@ -169,3 +171,26 @@ async def test_openai_client_emits_trace_logs_when_debug_logging_enabled(monkeyp
 
     trace_logger.log_request.assert_called_once()
     trace_logger.log_response.assert_called_once()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_openai_client_records_usage_to_active_request_recorder():
+    async def fake_create(**kwargs):
+        return _build_chat_response("tracked response", tokens=21)
+
+    client = _build_openai_client(fake_create)
+    recorder = LlmUsageRecorder()
+
+    with bind_usage_recorder(recorder):
+        await client.chat_completion(
+            messages=[{"role": "user", "content": "track usage"}],
+            response_contract="text",
+            purpose="generation",
+        )
+
+    delta = recorder.snapshot()
+    assert delta.total_calls == 1
+    assert delta.total_tokens == 21
+    assert delta.usage_by_model["generation-model"].calls == 1
+    assert delta.usage_by_model["generation-model"].tokens == 21

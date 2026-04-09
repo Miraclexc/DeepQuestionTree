@@ -57,6 +57,11 @@ describe("ReportView", () => {
 
         expect(screen.getByText("Exploration Report")).toBeInTheDocument();
         expect(screen.getByText("Executive Summary")).toBeInTheDocument();
+        expect(
+            screen.queryByText(
+                "Unsubsidized voluntary drop-off alone showed weak evidence.",
+            ),
+        ).not.toBeInTheDocument();
 
         await user.click(screen.getByRole("button", { name: /Pruned Paths/i }));
         expect(screen.getByText("Pruned Paths & Dead Ends")).toBeInTheDocument();

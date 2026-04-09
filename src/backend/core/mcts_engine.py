@@ -14,8 +14,9 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from ..config_loader import get_settings
+from ..llm.usage_tracking import LlmUsageRecorder, bind_usage_recorder
 from ..utils.logger import get_logger
-from .schema import Fact, Node, QAInteraction, SessionData
+from .schema import Fact, Node, QAInteraction, SessionData, SessionLlmUsage
 
 logger = get_logger(__name__)
 
@@ -24,7 +25,6 @@ logger = get_logger(__name__)
 class SessionSnapshot:
     session_revision: int
     leaf_node_id: str
-    leaf_node_revision: int
     reservation_token: str
     session: SessionData
 
@@ -33,11 +33,11 @@ class SessionSnapshot:
 class StepProposal:
     session_revision: int
     leaf_node_id: str
-    leaf_node_revision: int
     reservation_token: str
     updated_nodes: dict[str, Node]
     created_nodes: list[Node]
     global_facts: list[Fact]
+    llm_usage_delta: SessionLlmUsage
     new_node_id: str | None
     simulation_applied: bool
 
@@ -147,7 +147,6 @@ class MCTSEngine:
             return SessionSnapshot(
                 session_revision=self.session.session_revision,
                 leaf_node_id=leaf_node_id,
-                leaf_node_revision=leaf_node.node_revision,
                 reservation_token=reservation_token,
                 session=snapshot_session,
             )
@@ -158,89 +157,110 @@ class MCTSEngine:
         leaf_node = session.nodes.get(snapshot.leaf_node_id)
         if leaf_node is None:
             return None
-
-        if self.pruner:
-            should_prune, reason = await self._should_prune(
-                leaf_node,
-                session,
-                phase="pre",
-            )
-            if should_prune:
-                prune_reason = reason or "未命名剪枝原因"
-                logger.info("Pruning node %s: %s", leaf_node.id, prune_reason)
-                await self._mark_pruned_node(session, leaf_node, prune_reason)
-                return self._build_proposal(
-                    snapshot=snapshot,
-                    session=session,
-                    created_node_ids=[],
-                    backprop_start_id=leaf_node.id,
-                    value=0.0,
-                    simulation_applied=False,
-                    new_node_id=None,
+        recorder = LlmUsageRecorder()
+        with bind_usage_recorder(recorder):
+            if self.pruner:
+                should_prune, reason = await self._should_prune(
+                    leaf_node,
+                    session,
+                    phase="pre",
                 )
-
-        await self._process_node(session, leaf_node)
-
-        if self.pruner:
-            should_prune, reason = await self._should_prune(
-                leaf_node,
-                session,
-                phase="post",
-            )
-            if should_prune:
-                prune_reason = reason or "未命名剪枝原因"
-                logger.info("Pruning node %s: %s", leaf_node.id, prune_reason)
-                await self._mark_pruned_node(session, leaf_node, prune_reason)
-                return self._build_proposal(
-                    snapshot=snapshot,
-                    session=session,
-                    created_node_ids=[],
-                    backprop_start_id=leaf_node.id,
-                    value=0.0,
-                    simulation_applied=False,
-                    new_node_id=None,
-                )
-
-        if leaf_node.is_pruned or leaf_node.is_terminal:
-            return self._build_proposal(
-                snapshot=snapshot,
-                session=session,
-                created_node_ids=[],
-                backprop_start_id=leaf_node.id,
-                value=0.0,
-                simulation_applied=False,
-                new_node_id=None,
-            )
-
-        new_node_ids = await self._expand(session, leaf_node)
-        logger.info(
-            "Expanded node %s, got %s children",
-            leaf_node.id,
-            len(new_node_ids),
-        )
-
-        if not new_node_ids:
-            if len(leaf_node.children_ids) >= self.settings.mcts.branch_factor:
-                children = [
-                    session.nodes[cid]
-                    for cid in leaf_node.children_ids
-                    if cid in session.nodes
-                ]
-                processing_children = [
-                    child.id
-                    for child in children
-                    if child.is_processing and child.processing_token is not None
-                ]
-                if processing_children:
-                    logger.info(
-                        "Node %s has processing children: %s. Skipping.",
-                        leaf_node.id,
-                        processing_children,
+                if should_prune:
+                    prune_reason = reason or "未命名剪枝原因"
+                    logger.info("Pruning node %s: %s", leaf_node.id, prune_reason)
+                    await self._mark_pruned_node(session, leaf_node, prune_reason)
+                    return self._build_proposal(
+                        snapshot=snapshot,
+                        session=session,
+                        created_node_ids=[],
+                        backprop_start_id=leaf_node.id,
+                        value=0.0,
+                        simulation_applied=False,
+                        new_node_id=None,
+                        llm_usage_delta=recorder.snapshot(),
                     )
-                    return None
 
-                logger.info(
-                    "Node %s fully expanded and all children pruned/exhausted. "
+            await self._process_node(session, leaf_node)
+
+            if self.pruner:
+                should_prune, reason = await self._should_prune(
+                    leaf_node,
+                    session,
+                    phase="post",
+                )
+                if should_prune:
+                    prune_reason = reason or "未命名剪枝原因"
+                    logger.info("Pruning node %s: %s", leaf_node.id, prune_reason)
+                    await self._mark_pruned_node(session, leaf_node, prune_reason)
+                    return self._build_proposal(
+                        snapshot=snapshot,
+                        session=session,
+                        created_node_ids=[],
+                        backprop_start_id=leaf_node.id,
+                        value=0.0,
+                        simulation_applied=False,
+                        new_node_id=None,
+                        llm_usage_delta=recorder.snapshot(),
+                    )
+
+            if leaf_node.is_pruned or leaf_node.is_terminal:
+                return self._build_proposal(
+                    snapshot=snapshot,
+                    session=session,
+                    created_node_ids=[],
+                    backprop_start_id=leaf_node.id,
+                    value=0.0,
+                    simulation_applied=False,
+                    new_node_id=None,
+                    llm_usage_delta=recorder.snapshot(),
+                )
+
+            new_node_ids = await self._expand(session, leaf_node)
+            logger.info(
+                "Expanded node %s, got %s children",
+                leaf_node.id,
+                len(new_node_ids),
+            )
+
+            if not new_node_ids:
+                if len(leaf_node.children_ids) >= self.settings.mcts.branch_factor:
+                    children = [
+                        session.nodes[cid]
+                        for cid in leaf_node.children_ids
+                        if cid in session.nodes
+                    ]
+                    processing_children = [
+                        child.id
+                        for child in children
+                        if child.is_processing and child.processing_token is not None
+                    ]
+                    if processing_children:
+                        logger.info(
+                            "Node %s has processing children: %s. Skipping.",
+                            leaf_node.id,
+                            processing_children,
+                        )
+                        return None
+
+                    logger.info(
+                        "Node %s fully expanded and all children pruned/exhausted. "
+                        "Marking as terminal.",
+                        leaf_node.id,
+                    )
+                    leaf_node.mark_terminal()
+                    return self._build_proposal(
+                        snapshot=snapshot,
+                        session=session,
+                        created_node_ids=[],
+                        backprop_start_id=leaf_node.id,
+                        value=0.0,
+                        simulation_applied=False,
+                        new_node_id=None,
+                        llm_usage_delta=recorder.snapshot(),
+                    )
+
+                logger.error(
+                    "Failed to generate children for %s (limit not reached). "
                     "Marking as terminal.",
                     leaf_node.id,
                 )
@@ -253,48 +273,37 @@ class MCTSEngine:
                     value=0.0,
                     simulation_applied=False,
                     new_node_id=None,
+                    llm_usage_delta=recorder.snapshot(),
                 )
 
-            logger.error(
-                "Failed to generate children for %s (limit not reached). "
-                "Marking as terminal.",
-                leaf_node.id,
-            )
-            leaf_node.mark_terminal()
+            simulation_node_id = new_node_ids[0]
+            value = await self._simulate_value(session, simulation_node_id)
             return self._build_proposal(
                 snapshot=snapshot,
                 session=session,
-                created_node_ids=[],
-                backprop_start_id=leaf_node.id,
-                value=0.0,
-                simulation_applied=False,
-                new_node_id=None,
+                created_node_ids=new_node_ids,
+                backprop_start_id=simulation_node_id,
+                value=value,
+                simulation_applied=True,
+                new_node_id=simulation_node_id,
+                llm_usage_delta=recorder.snapshot(),
             )
-
-        simulation_node_id = new_node_ids[0]
-        value = await self._simulate_value(session, simulation_node_id)
-        return self._build_proposal(
-            snapshot=snapshot,
-            session=session,
-            created_node_ids=new_node_ids,
-            backprop_start_id=simulation_node_id,
-            value=value,
-            simulation_applied=True,
-            new_node_id=simulation_node_id,
-        )
 
     async def commit_step(self, proposal: StepProposal) -> CommitResult:
         """在串行提交通道内应用提案，不在锁内执行 await。"""
         async with self._commit_lock:
             live_leaf = self.session.nodes.get(proposal.leaf_node_id)
             if live_leaf is None:
+                self.session.merge_llm_usage(proposal.llm_usage_delta, touch=False)
                 return CommitResult(committed=False, reason="missing_leaf")
 
             if live_leaf.processing_token != proposal.reservation_token:
+                self.session.merge_llm_usage(proposal.llm_usage_delta, touch=False)
                 return CommitResult(committed=False, reason="reservation_lost")
 
             if self.session.session_revision != proposal.session_revision:
                 live_leaf.release_processing(proposal.reservation_token)
+                self.session.merge_llm_usage(proposal.llm_usage_delta, touch=False)
                 return CommitResult(committed=False, reason="stale_revision")
 
             if (
@@ -302,6 +311,7 @@ class MCTSEngine:
                 and self.session.total_simulations >= self.settings.mcts.max_simulations
             ):
                 live_leaf.release_processing(proposal.reservation_token)
+                self.session.merge_llm_usage(proposal.llm_usage_delta, touch=False)
                 return CommitResult(
                     committed=False,
                     reason="simulation_budget_reached",
@@ -311,6 +321,7 @@ class MCTSEngine:
                 live_node = self.session.nodes.get(node_id)
                 if live_node is None:
                     live_leaf.release_processing(proposal.reservation_token)
+                    self.session.merge_llm_usage(proposal.llm_usage_delta, touch=False)
                     return CommitResult(committed=False, reason="missing_updated_node")
                 self._apply_existing_node_update(
                     live_node=live_node,
@@ -323,7 +334,7 @@ class MCTSEngine:
             self.session.global_facts = [
                 fact.model_copy(deep=True) for fact in proposal.global_facts
             ]
-            self.session.recalculate_total_tokens_used()
+            self.session.merge_llm_usage(proposal.llm_usage_delta, touch=False)
 
             if proposal.simulation_applied:
                 self.session.increment_simulations()
@@ -659,6 +670,7 @@ class MCTSEngine:
         value: float,
         simulation_applied: bool,
         new_node_id: str | None,
+        llm_usage_delta: SessionLlmUsage,
     ) -> StepProposal:
         self._backpropagate(
             backprop_start_id,
@@ -684,11 +696,11 @@ class MCTSEngine:
         return StepProposal(
             session_revision=snapshot.session_revision,
             leaf_node_id=snapshot.leaf_node_id,
-            leaf_node_revision=snapshot.leaf_node_revision,
             reservation_token=snapshot.reservation_token,
             updated_nodes=updated_nodes,
             created_nodes=created_nodes,
             global_facts=[fact.model_copy(deep=True) for fact in session.global_facts],
+            llm_usage_delta=llm_usage_delta.model_copy(deep=True),
             new_node_id=new_node_id,
             simulation_applied=simulation_applied,
         )

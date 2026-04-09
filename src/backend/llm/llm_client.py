@@ -23,6 +23,7 @@ from .client_interface import (
     StructuredOutputContractError,
     parse_structured_content,
 )
+from .usage_tracking import record_usage_for_current_request
 
 logger = get_logger(__name__)
 
@@ -54,6 +55,7 @@ class OpenAICompatibleClient(BaseLLMClient):
         self.total_tokens_used = 0
         self.total_cost = 0.0
         self.request_count = 0
+        self.usage_by_model: dict[str, dict[str, int]] = {}
 
     @retry(
         stop=stop_after_attempt(3),
@@ -126,6 +128,13 @@ class OpenAICompatibleClient(BaseLLMClient):
 
                 self.total_tokens_used += tokens
                 self.total_cost += cost
+                usage_stats = self.usage_by_model.setdefault(
+                    model,
+                    {"calls": 0, "tokens": 0},
+                )
+                usage_stats["calls"] += 1
+                usage_stats["tokens"] += tokens
+                record_usage_for_current_request(model, tokens)
             self.request_count += 1
 
             if trace_logger is not None and trace_request_id is not None:
@@ -167,6 +176,7 @@ class OpenAICompatibleClient(BaseLLMClient):
             "total_requests": self.request_count,
             "average_tokens_per_request": self.total_tokens_used
             / max(self.request_count, 1),
+            "usage_by_model": self.usage_by_model,
         }
 
     async def reset_usage_stats(self) -> None:
@@ -174,6 +184,7 @@ class OpenAICompatibleClient(BaseLLMClient):
         self.total_tokens_used = 0
         self.total_cost = 0.0
         self.request_count = 0
+        self.usage_by_model = {}
 
     def _estimate_cost(self, model: str, tokens: int) -> float:
         """

@@ -50,4 +50,6 @@ class TestReportContract:
         assert isinstance(data["key_insights"], list)
         assert isinstance(data["pruned_insights"], list)
         assert isinstance(data["suggestions"], list)
-        assert data["llm_stats"]["usage_by_model"] == {}
+        assert data["llm_stats"]["total_calls"] >= 1
+        assert data["llm_stats"]["total_tokens"] >= 1
+        assert isinstance(data["llm_stats"]["usage_by_model"], dict)

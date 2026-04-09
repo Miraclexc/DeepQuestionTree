@@ -7,9 +7,10 @@ from types import SimpleNamespace
 import pytest
 
 from src.backend.core.schema import Node, QAInteraction, SessionData, SessionStatus
+from src.backend.llm.usage_tracking import record_usage_for_current_request
 from src.backend.services.configuration_service import ConfigurationService
 from src.backend.services.coordinator import RuntimeCoordinator
-from src.backend.services.errors import NotFoundError
+from src.backend.services.errors import NotFoundError, RuntimeConflictError
 from src.backend.services.report_service import ReportService
 from src.backend.services.session_command_service import SessionCommandService
 from src.backend.services.session_query_service import SessionQueryService
@@ -43,6 +44,7 @@ class FakeRepository:
                 created_at=session.created_at,
                 updated_at=session.updated_at,
                 status=session.status.value,
+                is_legacy_token_accounting=session.is_legacy_token_accounting,
                 total_simulations=session.total_simulations,
                 total_nodes=session.get_total_nodes(),
                 total_facts=len(session.global_facts),
@@ -74,10 +76,15 @@ class FakeRepository:
 
 class FakeCoordinator:
     def __init__(
-        self, active_session: SessionData | None = None, mcts_running: bool = False
+        self,
+        active_session: SessionData | None = None,
+        mcts_running: bool = False,
+        *,
+        single_session_mode: bool = True,
     ):
         self.active_session = active_session
         self.mcts_running = mcts_running
+        self.single_session_mode = single_session_mode
         self.use_mock = False
         self.integrator = None
         self.stopped_with: SessionStatus | None = None
@@ -116,6 +123,12 @@ class FakeCoordinator:
         self.reconfigured_with = modules
         self.integrator = modules.integrator
 
+    async def merge_report_usage(self, *, session_id: str, usage_delta) -> SessionData | None:
+        if self.active_session is None or self.active_session.session_id != session_id:
+            return None
+        self.active_session.merge_llm_usage(usage_delta)
+        return self.active_session.model_copy(deep=True)
+
 
 class FakeModuleFactory:
     def __init__(self, integrator=None):
@@ -141,6 +154,26 @@ class FakeIntegrator:
         if callable(self.payload):
             return self.payload(session, self.calls)
         return self.payload
+
+
+class RecordingUsageIntegrator:
+    def __init__(self, tokens_by_model: list[tuple[str, int]]):
+        self.tokens_by_model = tokens_by_model
+        self.calls = 0
+
+    async def generate_final_report(
+        self, session: SessionData, max_facts: int = 50
+    ) -> dict:
+        del max_facts
+        self.calls += 1
+        for model, tokens in self.tokens_by_model:
+            record_usage_for_current_request(model, tokens)
+        return {
+            "session_id": session.session_id,
+            "goal": session.global_goal,
+            "executive_summary": "usage aware report",
+            "generated_at": session.updated_at.isoformat(),
+        }
 
 
 class FakeExplodingIntegrator:
@@ -235,6 +268,35 @@ class TestSessionCommandService:
         assert response.session_id == session.session_id
         assert repository.sessions[session.session_id].session_version == 3
 
+    async def test_restore_legacy_session_raises_runtime_conflict(self):
+        session = SessionData(global_goal="legacy 会话", status=SessionStatus.PAUSED)
+        session.token_accounting_version = 1
+        session.add_node(
+            Node(
+                id=session.root_node_id,
+                depth=0,
+                interaction=QAInteraction(question="legacy 会话", answer="探索起点"),
+            )
+        )
+        repository = FakeRepository(
+            sessions={session.session_id: session},
+            reports={},
+        )
+        service = SessionCommandService(
+            repository,
+            FakeCoordinator(),
+            FakeModuleFactory(),
+        )
+
+        with pytest.raises(RuntimeConflictError) as exc_info:
+            await service.start_session(
+                goal="恢复 legacy",
+                use_mock=False,
+                session_id=session.session_id,
+            )
+
+        assert exc_info.value.code == "legacy_session_resume_unsupported"
+
     async def test_restore_session_clears_previous_error_message(self):
         session = SessionData(
             global_goal="旧会话",
@@ -272,6 +334,17 @@ class TestSessionCommandService:
 @pytest.mark.unit
 @pytest.mark.asyncio
 class TestSessionQueryService:
+    async def test_get_status_uses_runtime_single_session_mode(self):
+        repository = FakeRepository(sessions={}, reports={})
+        service = SessionQueryService(
+            repository,
+            FakeCoordinator(single_session_mode=False),
+        )
+
+        status = await service.get_status()
+
+        assert status.single_session_mode is False
+
     async def test_get_node_detail_raises_not_found_for_unknown_node(self):
         session = SessionData(global_goal="测试节点查询")
         session.add_node(
@@ -458,6 +531,76 @@ class TestReportService:
         assert report.executive_summary == "fresh-1"
         assert repository.reports[session.session_id]["source_session_version"] == 5
         assert integrator.calls == 1
+
+    async def test_report_service_records_report_generation_usage_in_session_ledger(self):
+        session = SessionData(global_goal="统计报告 token")
+        session.add_node(
+            Node(
+                id=session.root_node_id,
+                depth=0,
+                interaction=QAInteraction(question="root", answer="answer"),
+            )
+        )
+        repository = FakeRepository(sessions={session.session_id: session}, reports={})
+        integrator = RecordingUsageIntegrator(
+            [
+                ("insight-model", 11),
+                ("report-model", 13),
+                ("summary-model", 17),
+                ("suggest-model", 19),
+            ]
+        )
+        service = ReportService(
+            repository,
+            FakeCoordinator(active_session=session),
+            FakeModuleFactory(integrator=integrator),
+        )
+
+        report = await service.get_report(session.session_id)
+
+        assert report.llm_stats.total_calls == 4
+        assert report.llm_stats.total_tokens == 60
+        assert report.llm_stats.usage_by_model["insight-model"].tokens == 11
+        assert report.llm_stats.usage_by_model["report-model"].tokens == 13
+        assert report.llm_stats.usage_by_model["summary-model"].tokens == 17
+        assert report.llm_stats.usage_by_model["suggest-model"].tokens == 19
+        assert repository.sessions[session.session_id].total_tokens_used == 60
+        assert repository.sessions[session.session_id].llm_usage.total_calls == 4
+
+    async def test_report_service_returns_stable_error_for_legacy_session_without_cached_report(
+        self,
+    ):
+        session = SessionData(global_goal="legacy 报告")
+        session.token_accounting_version = 1
+        session.add_node(
+            Node(
+                id=session.root_node_id,
+                depth=0,
+                interaction=QAInteraction(question="root", answer="answer"),
+            )
+        )
+        repository = FakeRepository(sessions={session.session_id: session}, reports={})
+        integrator = FakeIntegrator(
+            {
+                "session_id": session.session_id,
+                "goal": session.global_goal,
+                "executive_summary": "should not run",
+                "generated_at": datetime.now(UTC).isoformat(),
+            }
+        )
+        service = ReportService(
+            repository,
+            FakeCoordinator(active_session=None),
+            FakeModuleFactory(integrator=integrator),
+        )
+
+        report = await service.get_report(session.session_id)
+
+        assert report.session_id == session.session_id
+        assert report.error_message is not None
+        assert "legacy" in report.error_message.lower()
+        assert integrator.calls == 0
+        assert session.session_id not in repository.reports
 
     async def test_report_service_does_not_cache_when_session_changes_during_generation(
         self,

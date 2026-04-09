@@ -1,6 +1,6 @@
 # Application Layer And Auth
 
-> Last Updated: 2026-04-08
+> Last Updated: 2026-04-09
 >
 > 本页唯一负责：作为统一 API、鉴权规则、错误响应与 read-model 契约的单一事实来源。
 
@@ -42,6 +42,7 @@
 补充说明：
 
 - `POST /api/start` 的请求体支持可选 `session_id`；前端当前通过 `History` 行内 `Resume Session` 动作接入该能力，`New Exploration` 仍只用于创建新会话。
+- 若目标 session 属于旧 token 账本（`token_accounting_version=1`），`POST /api/start` 会返回 `409`，错误码固定为 `legacy_session_resume_unsupported`
 - `GET /api/sessions/{session_id}/report` 是当前唯一真实报告读取路径；不存在 `/api/report`。
 
 ## 3. Authentication
@@ -104,6 +105,7 @@ localStorage.setItem("dqt.apiToken", "dev-token");
 补充语义：
 
 - 当真实 provider 配置缺失或非法时，`POST /api/start` 会在模块装配前失败，并返回 `code=configuration_error`
+- 当旧账本 session 尝试恢复时，`POST /api/start` 返回 `409` 且 `code=legacy_session_resume_unsupported`
 - 协调器、MCTS 主循环或持久化边界发生致命异常时，活跃会话会被置为 `error`，并写入 `error_message`
 - 恢复会话时会清空旧的 `error_message`
 
@@ -124,6 +126,8 @@ localStorage.setItem("dqt.apiToken", "dev-token");
 - `SystemStatusResponse.session_revision`
 - `SystemStatusResponse.session_error_message`
 - `TreeResponse.session_revision`
+- `SessionSummary.is_legacy_token_accounting`
+- `SessionReadModel.is_legacy_token_accounting`
 
 这些字段用于前端的轻量状态轮询：先轮询 `/api/status`，只有 revision 变化时才重新请求树。
 
@@ -147,13 +151,26 @@ localStorage.setItem("dqt.apiToken", "dev-token");
 
 旧缓存或失败载荷都会通过 `build_report_response()` 归一化。
 
+`pruned_insights` 的当前语义是“独立诊断 read-model”：
+
+- 前端继续通过单独的 `Pruned Paths` 标签页展示它
+- 后端报告正文生成 prompt 不接收剪枝摘要
+- `executive_summary` 与 `full_report` 只基于事实、主路径和关键见解生成
+
 当前报告 freshness 语义：
 
 - `GET /api/sessions/{session_id}/report` 会先拍当前会话快照，再判断是否存在同版本缓存
 - 只有当缓存的 `source_session_version` 等于当前 `session.session_version` 时才会直接返回缓存
 - 如果会话在报告生成期间继续推进，本次响应仍可返回，但不会覆盖最新版本的缓存
+- 若 session 属于旧 token 账本且当前版本没有缓存报告，接口仍返回 `200 + ReportResponse`，但只填稳定错误字段，不再触发新的 LLM 报告生成
 
 `SessionReadModel.report_available` 当前表示“该会话当前版本存在可复用报告”，不再表示“历史上生成过某份报告”。
+
+当前 token 统计语义：
+
+- `ReportResponse.llm_stats` 来自会话级 usage ledger，而不是节点 `interaction.tokens_used` 求和
+- `session.total_tokens_used` 镜像整场会话的累计 LLM 消耗
+- 节点 `interaction.tokens_used` 只保留节点回答和事实抽取的局部消耗
 
 ## 6. Frontend Request Layer
 

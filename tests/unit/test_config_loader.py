@@ -202,6 +202,28 @@ def test_load_settings_uses_defaults_when_config_file_is_missing(monkeypatch, tm
     assert settings.storage.session_db_path == "data/sessions/deepquestiontree.sqlite3"
 
 
+def test_load_settings_ignores_legacy_app_api_host(monkeypatch, tmp_path):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir(parents=True)
+    (config_dir / "settings.yaml").write_text(
+        textwrap.dedent(
+            """
+            app:
+              api_host: http://legacy-host
+              frontend_host: http://localhost
+            """
+        ).strip(),
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(tmp_path)
+
+    settings = load_settings("config/settings.yaml")
+
+    assert not hasattr(settings.app, "api_host")
+    assert settings.app.frontend_host == "http://localhost"
+
+
 def test_repository_real_provider_defaults_are_deepseek():
     settings_payload = yaml.safe_load(
         Path("config/settings.yaml").read_text(encoding="utf-8")

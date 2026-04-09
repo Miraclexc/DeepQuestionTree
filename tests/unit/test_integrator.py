@@ -36,6 +36,28 @@ class ContractAwareIntegratorLLM:
         return None
 
 
+class RecordingPromptManager:
+    def __init__(self):
+        self.calls: list[tuple[str, dict[str, object]]] = []
+
+    def render(self, key: str, **kwargs):
+        self.calls.append((key, kwargs))
+        if key == "generate_report":
+            return (
+                f"goal={kwargs['goal']}\n"
+                f"facts={kwargs['facts']}\n"
+                f"main_paths={kwargs['main_paths']}\n"
+                f"key_insights={kwargs['key_insights']}"
+            )
+        if key == "generate_executive_summary":
+            return f"summary::{kwargs['report_content']}"
+        if key == "extract_key_insights":
+            return f"insights::{kwargs['facts_text']}"
+        if key == "suggest_next_steps":
+            return f"suggest::{kwargs['goal']}::{kwargs['facts_summary']}"
+        raise AssertionError(f"unexpected prompt key: {key}")
+
+
 @pytest.mark.unit
 class TestIntegrator:
     def test_analyze_path_uses_goal_for_root_milestone(self):
@@ -97,3 +119,75 @@ class TestIntegrator:
 
         assert llm_client.response_contracts == ["json_array"]
         assert suggestions == ["建议1", "建议2"]
+
+    @pytest.mark.asyncio
+    async def test_generate_final_report_keeps_pruned_insights_out_of_report_prompt(
+        self,
+    ):
+        llm_client = ContractAwareIntegratorLLM(
+            [
+                {
+                    "content": '["关键见解"]',
+                    "structured_content": ["关键见解"],
+                },
+                {
+                    "content": "正式报告正文",
+                },
+                {
+                    "content": "执行摘要",
+                },
+                {
+                    "content": '["下一步建议"]',
+                    "structured_content": ["下一步建议"],
+                },
+            ]
+        )
+        prompts = RecordingPromptManager()
+        integrator = Integrator(llm_client, prompt_manager=prompts)
+        session = SessionData(global_goal="测试目标")
+        pruned_node = Node(
+            parent_id=session.root_node_id,
+            depth=1,
+            interaction=QAInteraction(
+                question="低价值路径",
+                answer="无效回答",
+                summary="这条剪枝摘要不应进入正文",
+            ),
+            is_pruned=True,
+            prune_reason="连续低价值路径",
+        )
+        session.add_node(
+            Node(
+                id=session.root_node_id,
+                depth=0,
+                interaction=QAInteraction(question="测试目标", answer="探索起点"),
+            )
+        )
+        session.add_node(pruned_node)
+        session.global_facts = [
+            Fact(
+                content="已验证事实",
+                source_node_id=session.root_node_id,
+                confidence=0.9,
+            )
+        ]
+
+        report = await integrator.generate_final_report(session)
+
+        generate_report_call = next(
+            kwargs for key, kwargs in prompts.calls if key == "generate_report"
+        )
+        executive_summary_call = next(
+            kwargs
+            for key, kwargs in prompts.calls
+            if key == "generate_executive_summary"
+        )
+
+        assert "pruned" not in generate_report_call
+        assert "这条剪枝摘要不应进入正文" not in report["full_report"]
+        assert (
+            "这条剪枝摘要不应进入正文" not in executive_summary_call["report_content"]
+        )
+        assert report["pruned_insights"] == [
+            "路径片段 (因连续低价值路径中止): 这条剪枝摘要不应进入正文"
+        ]

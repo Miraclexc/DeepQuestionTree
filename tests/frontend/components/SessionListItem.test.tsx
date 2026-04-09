@@ -87,4 +87,21 @@ describe("SessionListItem", () => {
 
         expect(screen.queryByTitle("Resume Session")).not.toBeInTheDocument();
     });
+
+    it("does not show resume for legacy sessions even when completed", () => {
+        render(
+            React.createElement(SessionListItem, {
+                session: {
+                    ...sessionSummariesFixture[1],
+                    is_legacy_token_accounting: true,
+                },
+                selected: false,
+                onSelect: vi.fn(),
+                onResume: vi.fn(),
+                onDelete: vi.fn(),
+            }),
+        );
+
+        expect(screen.queryByTitle("Resume Session")).not.toBeInTheDocument();
+    });
 });

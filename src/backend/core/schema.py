@@ -13,6 +13,61 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+CURRENT_TOKEN_ACCOUNTING_VERSION = 2
+
+
+class LlmUsageStats(BaseModel):
+    """单个模型的 LLM 使用统计。"""
+
+    calls: int = Field(default=0, ge=0, description="调用次数")
+    tokens: int = Field(default=0, ge=0, description="Token 消耗")
+
+
+class SessionLlmUsage(BaseModel):
+    """会话级 LLM 使用统计。"""
+
+    total_calls: int = Field(default=0, ge=0, description="总调用次数")
+    total_tokens: int = Field(default=0, ge=0, description="总 Token 消耗")
+    usage_by_model: Dict[str, LlmUsageStats] = Field(
+        default_factory=dict,
+        description="按模型聚合的调用统计",
+    )
+
+    def record(self, model: str, tokens: int, *, calls: int = 1) -> None:
+        """记录一次或多次 LLM 使用。"""
+        model_name = str(model or "unknown").strip() or "unknown"
+        safe_calls = max(0, int(calls))
+        safe_tokens = max(0, int(tokens))
+        if safe_calls == 0 and safe_tokens == 0:
+            return
+
+        stats = self.usage_by_model.setdefault(model_name, LlmUsageStats())
+        stats.calls += safe_calls
+        stats.tokens += safe_tokens
+        self.total_calls += safe_calls
+        self.total_tokens += safe_tokens
+
+    def merge(self, other: "SessionLlmUsage") -> None:
+        """合并另一份使用统计。"""
+        for model, stats in other.usage_by_model.items():
+            self.record(model, stats.tokens, calls=stats.calls)
+
+    def is_empty(self) -> bool:
+        return self.total_calls == 0 and self.total_tokens == 0
+
+    def to_report_payload(self) -> dict[str, object]:
+        return {
+            "total_calls": self.total_calls,
+            "total_tokens": self.total_tokens,
+            "usage_by_model": {
+                model: {
+                    "calls": stats.calls,
+                    "tokens": stats.tokens,
+                }
+                for model, stats in self.usage_by_model.items()
+            },
+        }
+
 
 class Fact(BaseModel):
     """表示一个从回答中提取出的确切事实"""
@@ -186,6 +241,15 @@ class SessionData(BaseModel):
     # 运行统计
     total_simulations: int = Field(default=0, ge=0, description="总模拟次数")
     total_tokens_used: int = Field(default=0, ge=0, description="总Token消耗")
+    token_accounting_version: int = Field(
+        default=CURRENT_TOKEN_ACCOUNTING_VERSION,
+        ge=1,
+        description="Token 统计版本",
+    )
+    llm_usage: SessionLlmUsage = Field(
+        default_factory=SessionLlmUsage,
+        description="会话级 LLM 使用账本",
+    )
     session_revision: int = Field(default=0, ge=0, description="会话提交版本")
     session_version: int = Field(default=0, ge=0, description="报告缓存版本")
 
@@ -225,14 +289,47 @@ class SessionData(BaseModel):
 
     def recalculate_total_tokens_used(self, *, touch: bool = True) -> int:
         """根据节点交互重新计算会话级 token 统计。"""
-        self.total_tokens_used = sum(
-            node.interaction.tokens_used
-            for node in self.nodes.values()
-            if node.interaction is not None
-        )
+        if self.is_legacy_token_accounting:
+            self.total_tokens_used = sum(
+                node.interaction.tokens_used
+                for node in self.nodes.values()
+                if node.interaction is not None
+            )
+        else:
+            self.total_tokens_used = self.llm_usage.total_tokens
         if touch:
             self.updated_at = datetime.now()
         return self.total_tokens_used
+
+    @property
+    def is_legacy_token_accounting(self) -> bool:
+        return self.token_accounting_version < CURRENT_TOKEN_ACCOUNTING_VERSION
+
+    def record_llm_usage(
+        self,
+        model: str,
+        tokens: int,
+        *,
+        calls: int = 1,
+        touch: bool = True,
+    ) -> None:
+        """记录会话级 LLM 使用，并同步兼容总 token 字段。"""
+        self.llm_usage.record(model, tokens, calls=calls)
+        self.total_tokens_used = self.llm_usage.total_tokens
+        if touch:
+            self.updated_at = datetime.now()
+
+    def merge_llm_usage(
+        self,
+        usage: SessionLlmUsage,
+        *,
+        touch: bool = True,
+    ) -> None:
+        """合并增量账本并同步兼容总 token 字段。"""
+        self.llm_usage.merge(usage)
+        self.total_tokens_used = self.llm_usage.total_tokens
+        if touch and not usage.is_empty():
+            self.updated_at = datetime.now()
 
     def increment_revision(self) -> None:
         """递增会话提交版本"""

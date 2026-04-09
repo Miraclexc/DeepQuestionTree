@@ -18,7 +18,9 @@ export function SessionListItem({
     onResume,
     onDelete,
 }: SessionListItemProps) {
-    const canResume = ["paused", "completed", "error"].includes(session.status);
+    const canResume =
+        ["paused", "completed", "error"].includes(session.status) &&
+        !session.is_legacy_token_accounting;
 
     return (
         <div

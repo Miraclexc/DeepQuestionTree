@@ -17,7 +17,10 @@ type SessionCommandOptions = {
     onResetCurrentSession: () => void;
 };
 
-type ResumableSession = Pick<SessionSummary, "session_id" | "global_goal">;
+type ResumableSession = Pick<
+    SessionSummary,
+    "session_id" | "global_goal" | "is_legacy_token_accounting"
+>;
 
 export function useSessionCommands(options: SessionCommandOptions) {
     const {
@@ -37,6 +40,7 @@ export function useSessionCommands(options: SessionCommandOptions) {
     const invalidateSessionViews = () => {
         invalidateResource("system-status");
         invalidateResource("sessions");
+        invalidateResourcePrefix("session:");
         invalidateResourcePrefix("tree:");
         invalidateResourcePrefix("report:");
     };
@@ -71,6 +75,9 @@ export function useSessionCommands(options: SessionCommandOptions) {
     };
 
     const handleResumeSession = async (session: ResumableSession) => {
+        if (session.is_legacy_token_accounting) {
+            return;
+        }
         const response = await startSession(
             session.global_goal,
             false,

@@ -110,6 +110,7 @@ class TestPersistence:
         sample_session_with_data,
     ):
         session = sample_session_with_data
+        session.token_accounting_version = 1
         session.nodes[session.root_node_id].interaction.tokens_used = 30
         session.total_tokens_used = 999
 
@@ -118,6 +119,24 @@ class TestPersistence:
 
         assert loaded_session is not None
         assert loaded_session.total_tokens_used == 180
+
+    async def test_load_v2_session_preserves_llm_usage_ledger_totals(
+        self,
+        session_manager,
+        sample_session_with_data,
+    ):
+        session = sample_session_with_data
+        session.record_llm_usage("answer-model", 321)
+        session.nodes[session.root_node_id].interaction.tokens_used = 30
+
+        await session_manager.save_session(session)
+        loaded_session = await session_manager.load_session(session.session_id)
+
+        assert loaded_session is not None
+        assert loaded_session.token_accounting_version == session.token_accounting_version
+        assert loaded_session.total_tokens_used == 321
+        assert loaded_session.llm_usage.total_tokens == 321
+        assert loaded_session.llm_usage.usage_by_model["answer-model"].tokens == 321
 
     async def test_load_nonexistent_session(self, session_manager):
         result = await session_manager.load_session("nonexistent_session_id")
@@ -263,10 +282,11 @@ class TestPersistenceEdgeCases:
                     session_version,
                     total_simulations,
                     total_tokens_used,
+                    token_accounting_version,
                     total_nodes,
                     total_facts
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     "broken-session",
@@ -280,6 +300,7 @@ class TestPersistenceEdgeCases:
                     1,
                     0,
                     0,
+                    1,
                     0,
                     0,
                 ),

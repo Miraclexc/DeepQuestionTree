@@ -6,6 +6,8 @@ import { cn } from "@/lib/utils";
 interface WorkspaceHeaderProps {
     currentSession: SessionSummary | null;
     currentSessionId: string | null;
+    canGenerateReport: boolean;
+    generateReportDisabledReason?: string;
     onGenerateReport: () => void;
     onStopAndReport: () => Promise<void>;
 }
@@ -13,6 +15,8 @@ interface WorkspaceHeaderProps {
 export function WorkspaceHeader({
     currentSession,
     currentSessionId,
+    canGenerateReport,
+    generateReportDisabledReason,
     onGenerateReport,
     onStopAndReport,
 }: WorkspaceHeaderProps) {
@@ -68,6 +72,8 @@ export function WorkspaceHeader({
 
                     <button
                         onClick={onGenerateReport}
+                        disabled={!canGenerateReport}
+                        title={generateReportDisabledReason}
                         className="px-3 py-1.5 text-xs font-medium bg-primary/10 text-primary hover:bg-primary/20 rounded-md flex items-center gap-1.5 transition-colors"
                     >
                         <FileText className="h-3.5 w-3.5" />
@@ -82,4 +88,3 @@ export function WorkspaceHeader({
         </div>
     );
 }
-

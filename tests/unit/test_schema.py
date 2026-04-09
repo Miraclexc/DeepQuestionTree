@@ -11,10 +11,12 @@ import pytest
 
 from src.backend.core.schema import (
     Fact,
+    LlmUsageStats,
     Node,
     NodeState,
     QAInteraction,
     SessionData,
+    SessionLlmUsage,
     SessionStatus,
 )
 
@@ -266,6 +268,7 @@ class TestSessionData:
 
     def test_recalculate_total_tokens_used_from_node_interactions(self):
         session = SessionData(global_goal="统计 token")
+        session.token_accounting_version = 1
         root = Node(
             id=session.root_node_id,
             depth=0,
@@ -293,6 +296,66 @@ class TestSessionData:
 
         assert total == 35
         assert session.total_tokens_used == 35
+
+    def test_record_llm_usage_updates_v2_ledger_and_total_tokens(self):
+        session = SessionData(global_goal="统计完整 token")
+
+        session.record_llm_usage("answer-model", 4)
+        session.merge_llm_usage(
+            SessionLlmUsage(
+                total_calls=2,
+                total_tokens=9,
+                usage_by_model={
+                    "checker-model": LlmUsageStats(calls=1, tokens=3),
+                    "report-model": LlmUsageStats(calls=1, tokens=6),
+                },
+            )
+        )
+
+        assert session.is_legacy_token_accounting is False
+        assert session.llm_usage.total_calls == 3
+        assert session.llm_usage.total_tokens == 13
+        assert session.total_tokens_used == 13
+        assert session.llm_usage.usage_by_model["answer-model"].calls == 1
+        assert session.llm_usage.usage_by_model["answer-model"].tokens == 4
+        assert session.llm_usage.usage_by_model["checker-model"].tokens == 3
+        assert session.llm_usage.usage_by_model["report-model"].tokens == 6
+
+    def test_recalculate_total_tokens_used_uses_v2_usage_ledger(self):
+        session = SessionData(global_goal="v2 token 镜像")
+        root = Node(
+            id=session.root_node_id,
+            depth=0,
+            interaction=QAInteraction(
+                question="统计 token",
+                answer="根回答",
+                tokens_used=12,
+            ),
+        )
+        child = Node(
+            parent_id=root.id,
+            depth=1,
+            interaction=QAInteraction(
+                question="继续追问",
+                answer="子回答",
+                tokens_used=23,
+            ),
+        )
+        session.add_node(root)
+        session.add_node(child)
+        root.children_ids = [child.id]
+        session.llm_usage = SessionLlmUsage(
+            total_calls=4,
+            total_tokens=88,
+            usage_by_model={
+                "generation-model": LlmUsageStats(calls=4, tokens=88),
+            },
+        )
+
+        total = session.recalculate_total_tokens_used()
+
+        assert total == 88
+        assert session.total_tokens_used == 88
 
     def test_get_tree_depth(self, sample_nodes):
         """测试获取树深度"""

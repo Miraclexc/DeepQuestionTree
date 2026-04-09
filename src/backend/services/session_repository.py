@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping, Protocol
 
-from ..core.schema import SessionData
+from ..core.schema import CURRENT_TOKEN_ACCOUNTING_VERSION, SessionData
 from ..modules.persistence import SessionManager, get_session_manager
 from .errors import ContractError, NotFoundError, PersistenceError
 
@@ -17,6 +17,7 @@ class SessionSummaryRecord:
     created_at: datetime
     updated_at: datetime
     status: str
+    is_legacy_token_accounting: bool
     total_simulations: int
     total_nodes: int
     total_facts: int
@@ -31,6 +32,11 @@ class SessionSummaryRecord:
                 created_at=_parse_datetime(payload.get("created_at"), "created_at"),
                 updated_at=_parse_datetime(payload.get("updated_at"), "updated_at"),
                 status=_require_str(payload, "status"),
+                is_legacy_token_accounting=_require_int(
+                    payload.get("token_accounting_version"),
+                    "token_accounting_version",
+                )
+                < CURRENT_TOKEN_ACCOUNTING_VERSION,
                 total_simulations=_require_int(
                     payload.get("total_simulations"), "total_simulations"
                 ),
@@ -53,6 +59,7 @@ class SessionSummaryRecord:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "status": self.status,
+            "is_legacy_token_accounting": self.is_legacy_token_accounting,
             "total_simulations": self.total_simulations,
             "total_nodes": self.total_nodes,
             "total_facts": self.total_facts,

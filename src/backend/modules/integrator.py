@@ -64,7 +64,6 @@ class Integrator:
                 facts_analysis,
                 path_analysis,
                 key_insights,
-                pruned_insights,
             )
 
             # 5. 生成执行摘要
@@ -304,7 +303,6 @@ class Integrator:
         facts_analysis: Dict,
         path_analysis: Dict,
         key_insights: List[str],
-        pruned_insights: List[str],
     ) -> str:
         """
         生成完整报告内容
@@ -318,13 +316,6 @@ class Integrator:
 
             # 准备关键见解
             insights_text = "\n".join([f"- {insight}" for insight in key_insights])
-
-            # 准备剪枝见解
-            pruned_text = (
-                "\n".join([f"- {insight}" for insight in pruned_insights])
-                if pruned_insights
-                else "无显著剪枝记录"
-            )
 
             # 渲染报告 Prompt
             prompt = self.prompts.render(
@@ -418,29 +409,7 @@ class Integrator:
         """
         分析 LLM 使用情况
         """
-        usage_by_model = {}
-        total_tokens = 0
-        total_calls = 0
-
-        for node in session.nodes.values():
-            if node.interaction:
-                model = node.interaction.model_used or "unknown"
-                tokens = node.interaction.tokens_used
-
-                if model not in usage_by_model:
-                    usage_by_model[model] = {"calls": 0, "tokens": 0}
-
-                usage_by_model[model]["calls"] += 1
-                usage_by_model[model]["tokens"] += tokens
-
-                total_calls += 1
-                total_tokens += tokens
-
-        return {
-            "total_calls": total_calls,
-            "total_tokens": total_tokens,
-            "usage_by_model": usage_by_model,
-        }
+        return session.llm_usage.to_report_payload()
 
     def _get_error_report(self, session: SessionData, error: str) -> Dict:
         """获取错误报告"""

@@ -3,11 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
+    fetchSession,
     fetchSessions,
     fetchTree,
     getSystemStatus,
 } from "@/lib/api";
 import {
+    SessionDetails,
     SessionSummary,
     SystemStatus,
     TreeResponse,
@@ -28,6 +30,8 @@ const EMPTY_TREE: TreeResponse = {
     edges: [],
     statistics: {},
 };
+
+const EMPTY_SESSION_DETAILS: SessionDetails | null = null;
 
 const EMPTY_STATUS: SystemStatus = {
     single_session_mode: true,
@@ -72,6 +76,14 @@ export function useDeepQuestionTree() {
         {
             enabled: Boolean(currentSessionId),
             initialData: EMPTY_TREE,
+        },
+    );
+    const sessionDetailsQuery = usePollingResource<SessionDetails | null>(
+        currentSessionId ? `session:${currentSessionId}` : "session:none",
+        async () => fetchSession(currentSessionId as string),
+        {
+            enabled: Boolean(currentSessionId),
+            initialData: EMPTY_SESSION_DETAILS,
         },
     );
     const { error, clearError } = useGlobalApiError();
@@ -174,9 +186,23 @@ export function useDeepQuestionTree() {
         : hasLoadedStatus
           ? "connected"
           : "unknown";
+    const currentSessionDetails = sessionDetailsQuery.data;
+    const isLegacyTokenAccounting =
+        currentSessionDetails?.is_legacy_token_accounting ??
+        currentSession?.is_legacy_token_accounting ??
+        false;
+    const canGenerateReport =
+        currentSessionId !== null &&
+        (!isLegacyTokenAccounting ||
+            Boolean(currentSessionDetails?.report_available));
+    const generateReportDisabledReason =
+        isLegacyTokenAccounting && !currentSessionDetails?.report_available
+            ? "Legacy sessions without cached reports are read-only."
+            : undefined;
 
     return {
         currentSession,
+        currentSessionDetails,
         currentSessionId,
         draftGoal: sessionCommands.draftGoal,
         error,
@@ -204,5 +230,7 @@ export function useDeepQuestionTree() {
         onResumeSession: sessionCommands.resumeSession,
         onStartSession: sessionCommands.startSession,
         onStopAndReport: sessionCommands.stopAndReport,
+        canGenerateReport,
+        generateReportDisabledReason,
     };
 }

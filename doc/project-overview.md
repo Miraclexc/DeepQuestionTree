@@ -1,6 +1,6 @@
 # DeepQuestionTree Project Overview
 
-> Last Updated: 2026-04-08
+> Last Updated: 2026-04-09
 >
 > 本页唯一负责：记录当前代码已经落地的真实架构、运行时约束、配置边界、数据流与已知原型边界。
 
@@ -113,7 +113,9 @@ Backend (FastAPI app factory)
 - `list_sessions()`：返回 `SessionSummaryRecord`
 - 报告缓存只在 `source_session_version == session.session_version` 时命中
 - `SessionManager` 保存时会根据 `(session_revision, session_version, tokens, simulations, status)` 跳过重复快照
-- 旧会话加载时会根据节点 `interaction.tokens_used` 自动校准 `total_tokens_used`
+- 旧会话（`token_accounting_version=1`）加载时会根据节点 `interaction.tokens_used` 自动校准 `total_tokens_used`
+- 新会话（`token_accounting_version=2`）持久化独立 `llm_usage` 账本；`session.total_tokens_used` 只是 `llm_usage.total_tokens` 的兼容镜像
+- 当前活跃持久化边界以 `data/sessions/deepquestiontree.sqlite3` 为主；旧 `data/sessions/*.json` 快照已不再参与真实运行链路
 
 ## 4. Configuration Boundary
 
@@ -180,8 +182,16 @@ Backend (FastAPI app factory)
 
 - 节点答案展示通过 `parse_display_answer()` 做输出归一化
 - 报告响应通过 `build_report_response()` 保持稳定结构
+- `pruned_insights` 作为独立诊断视图字段保留，但不进入报告正文 prompt，也不混入 `full_report` / `executive_summary`
 
 这使后端内部字段调整不会直接打爆前端展示层。
+
+当前 token 统计边界：
+
+- `session.total_tokens_used` 不再只从节点回答反推，而是镜像整场会话的 `llm_usage.total_tokens`
+- 节点 `interaction.tokens_used` 只表示该节点的“回答 + 事实抽取”局部消耗
+- `llm_stats` 来自会话级 usage ledger，因此会覆盖问题生成、checker 决策、候选问题打分和报告生成
+- legacy session 只允许查看/删除；没有当前版本缓存报告时不会再触发新的报告生成
 
 ## 6. Frontend Data Flow
 

@@ -13,6 +13,7 @@ import {
 } from "../fixtures/data";
 
 const {
+    fetchSessionMock,
     fetchSessionsMock,
     fetchTreeMock,
     getSystemStatusMock,
@@ -21,6 +22,7 @@ const {
     useReportStateMock,
     useSessionCommandsMock,
 } = vi.hoisted(() => ({
+    fetchSessionMock: vi.fn(),
     fetchSessionsMock: vi.fn(),
     fetchTreeMock: vi.fn(),
     getSystemStatusMock: vi.fn(),
@@ -31,6 +33,7 @@ const {
 }));
 
 vi.mock("@/lib/api", () => ({
+    fetchSession: fetchSessionMock,
     fetchSessions: fetchSessionsMock,
     fetchTree: fetchTreeMock,
     getSystemStatus: getSystemStatusMock,
@@ -63,6 +66,7 @@ describe("useDeepQuestionTree", () => {
     beforeEach(() => {
         vi.useFakeTimers();
         fetchSessionsMock.mockReset();
+        fetchSessionMock.mockReset();
         fetchTreeMock.mockReset();
         getSystemStatusMock.mockReset();
         useGlobalApiErrorMock.mockReturnValue({
@@ -95,8 +99,25 @@ describe("useDeepQuestionTree", () => {
             stopAndReport: vi.fn(),
         });
         fetchSessionsMock.mockResolvedValue(sessionSummariesFixture);
+        fetchSessionMock.mockResolvedValue({
+            session_id: "session-1",
+            root_node_id: "root-node",
+            global_goal: sessionSummariesFixture[0].global_goal,
+            total_simulations: 2,
+            total_tokens_used: 0,
+            is_legacy_token_accounting: false,
+            created_at: sessionSummariesFixture[0].created_at,
+            updated_at: sessionSummariesFixture[0].updated_at,
+            status: sessionSummariesFixture[0].status,
+            error_message: null,
+            total_nodes: 3,
+            total_facts: 4,
+            report_available: false,
+            is_active: true,
+        });
         invalidateResource("sessions");
         invalidateResource("system-status");
+        invalidateResourcePrefix("session:");
         invalidateResourcePrefix("tree:");
     });
 

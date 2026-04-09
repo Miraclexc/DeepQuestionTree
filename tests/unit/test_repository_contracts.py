@@ -161,10 +161,11 @@ class TestSqliteSessionRepository:
                     session_version,
                     total_simulations,
                     total_tokens_used,
+                    token_accounting_version,
                     total_nodes,
                     total_facts
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     "session-1",
@@ -178,6 +179,7 @@ class TestSqliteSessionRepository:
                     1,
                     0,
                     0,
+                    1,
                     0,
                     0,
                 ),
