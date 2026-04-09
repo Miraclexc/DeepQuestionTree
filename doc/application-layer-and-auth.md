@@ -24,7 +24,7 @@
 
 ## 2. Endpoint Matrix
 
-所有当前公开路由都位于 `/api/*` 下；不存在旧的 `/api/visualizer/*` 读取接口。
+所有当前公开路由都位于 `/api/*` 下。
 
 | Method | Path | Purpose | Primary Response |
 |---|---|---|---|
@@ -41,7 +41,7 @@
 
 补充说明：
 
-- `POST /api/start` 的请求体支持可选 `session_id`，但当前前端 `New Exploration` UI 没有暴露这个字段。
+- `POST /api/start` 的请求体支持可选 `session_id`；前端当前通过 `History` 行内 `Resume Session` 动作接入该能力，`New Exploration` 仍只用于创建新会话。
 - `GET /api/sessions/{session_id}/report` 是当前唯一真实报告读取路径；不存在 `/api/report`。
 
 ## 3. Authentication

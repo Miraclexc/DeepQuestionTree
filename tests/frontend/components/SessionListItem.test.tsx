@@ -21,6 +21,7 @@ describe("SessionListItem", () => {
                 session: sessionSummariesFixture[0],
                 selected: false,
                 onSelect,
+                onResume: vi.fn(),
                 onDelete: vi.fn(),
             }),
         );
@@ -43,6 +44,7 @@ describe("SessionListItem", () => {
                 session: sessionSummariesFixture[0],
                 selected: true,
                 onSelect: vi.fn(),
+                onResume: vi.fn(),
                 onDelete,
             }),
         );
@@ -51,5 +53,38 @@ describe("SessionListItem", () => {
 
         expect(confirm).toHaveBeenCalled();
         expect(onDelete).toHaveBeenCalledWith("session-1");
+    });
+
+    it("shows resume for resumable sessions and calls onResume", async () => {
+        const user = userEvent.setup();
+        const onResume = vi.fn();
+
+        render(
+            React.createElement(SessionListItem, {
+                session: sessionSummariesFixture[1],
+                selected: false,
+                onSelect: vi.fn(),
+                onResume,
+                onDelete: vi.fn(),
+            }),
+        );
+
+        await user.click(screen.getByTitle("Resume Session"));
+
+        expect(onResume).toHaveBeenCalledWith("session-2");
+    });
+
+    it("does not show resume for running sessions", () => {
+        render(
+            React.createElement(SessionListItem, {
+                session: sessionSummariesFixture[0],
+                selected: false,
+                onSelect: vi.fn(),
+                onResume: vi.fn(),
+                onDelete: vi.fn(),
+            }),
+        );
+
+        expect(screen.queryByTitle("Resume Session")).not.toBeInTheDocument();
     });
 });

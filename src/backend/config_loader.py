@@ -42,10 +42,10 @@ class AppConfig(BaseModel):
 class LLMConfig(BaseModel):
     """LLM 配置"""
 
-    generation_model: str = "gpt-4o"
-    decision_model: str = "gpt-4"
+    generation_model: str = "deepseek-chat"
+    decision_model: str = "deepseek-reasoner"
     api_key: str = ""
-    base_url: str = "https://api.openai.com/v1"
+    base_url: str = "https://api.deepseek.com/v1"
     timeout: int = 60
     max_retries: int = 3
 

@@ -4,9 +4,9 @@ Prompt 管理模块
 """
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
-from jinja2 import Environment, Template, TemplateError, meta
+from jinja2 import Environment, StrictUndefined, Template, TemplateError, meta
 from yaml import safe_load
 
 
@@ -21,7 +21,9 @@ class PromptManager:
             prompt_file: Prompt 配置文件路径
         """
         self.prompt_file = Path(prompt_file)
-        self.prompts: Dict[str, str] = {}
+        self.environment = Environment(undefined=StrictUndefined)
+        self.prompts: dict[str, str] = {}
+        self.templates: dict[str, Template] = {}
 
         # 加载所有 Prompt
         self._load_prompts()
@@ -35,12 +37,23 @@ class PromptManager:
 
         try:
             with open(self.prompt_file, "r", encoding="utf-8") as f:
-                self.prompts = safe_load(f) or {}
+                loaded = safe_load(f) or {}
         except Exception as e:
             raise ValueError(f"加载 Prompt 文件失败: {e}") from e
 
-        if not self.prompts:
+        if not isinstance(loaded, dict) or not loaded:
             raise ValueError("Prompt 文件为空")
+
+        prompts: dict[str, str] = {}
+        templates: dict[str, Template] = {}
+        for key, value in loaded.items():
+            if not isinstance(key, str) or not isinstance(value, str):
+                raise ValueError("Prompt 文件必须是 {str: str} 映射")
+            prompts[key] = value
+            templates[key] = self.environment.from_string(value)
+
+        self.prompts = prompts
+        self.templates = templates
 
     def render(self, prompt_key: str, **kwargs: Any) -> str:
         """
@@ -57,15 +70,14 @@ class PromptManager:
             KeyError: Prompt key 不存在
             TemplateError: 模板渲染错误
         """
-        template_str = self.prompts.get(prompt_key)
-        if not template_str:
+        template = self.templates.get(prompt_key)
+        if template is None:
             available_keys = list(self.prompts.keys())
             raise KeyError(
                 f"Prompt key '{prompt_key}' 不存在。可用的 keys: {available_keys}"
             )
 
         try:
-            template = Template(template_str)
             rendered = template.render(**kwargs)
             return rendered.strip()
         except TemplateError as e:
@@ -89,7 +101,7 @@ class PromptManager:
         """重新加载 Prompt 文件"""
         self._load_prompts()
 
-    def list_prompts(self) -> Dict[str, str]:
+    def list_prompts(self) -> dict[str, str]:
         """
         列出所有可用的 Prompt
 
@@ -113,8 +125,7 @@ class PromptManager:
             return False
 
         template_str = self.prompts[prompt_key]
-        environment = Environment()
-        parsed_template = environment.parse(template_str)
+        parsed_template = self.environment.parse(template_str)
 
         # 检查模板中声明的变量
         undefined_vars = meta.find_undeclared_variables(parsed_template)

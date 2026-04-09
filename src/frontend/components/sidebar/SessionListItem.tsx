@@ -1,4 +1,4 @@
-import { Clock, Trash2 } from "lucide-react";
+import { Clock, Play, Trash2 } from "lucide-react";
 
 import { SessionSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -7,15 +7,19 @@ interface SessionListItemProps {
     session: SessionSummary;
     selected: boolean;
     onSelect: (id: string) => void;
-    onDelete: (id: string) => void;
+    onResume: (id: string) => void | Promise<void>;
+    onDelete: (id: string) => void | Promise<void>;
 }
 
 export function SessionListItem({
     session,
     selected,
     onSelect,
+    onResume,
     onDelete,
 }: SessionListItemProps) {
+    const canResume = ["paused", "completed", "error"].includes(session.status);
+
     return (
         <div
             className={cn(
@@ -50,19 +54,34 @@ export function SessionListItem({
                     </div>
                 </div>
             </button>
-            <button
-                onClick={(event) => {
-                    event.stopPropagation();
-                    if (confirm("Are you sure you want to delete this session?")) {
-                        onDelete(session.session_id);
-                    }
-                }}
-                className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-destructive/10 hover:text-destructive rounded-md transition-all"
-                title="Delete Session"
-            >
-                <Trash2 className="h-4 w-4" />
-            </button>
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                {canResume && (
+                    <button
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            onResume(session.session_id);
+                        }}
+                        className="p-1.5 hover:bg-primary/10 hover:text-primary rounded-md transition-all"
+                        title="Resume Session"
+                        aria-label="Resume Session"
+                    >
+                        <Play className="h-4 w-4" />
+                    </button>
+                )}
+                <button
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        if (confirm("Are you sure you want to delete this session?")) {
+                            onDelete(session.session_id);
+                        }
+                    }}
+                    className="p-1.5 hover:bg-destructive/10 hover:text-destructive rounded-md transition-all"
+                    title="Delete Session"
+                    aria-label="Delete Session"
+                >
+                    <Trash2 className="h-4 w-4" />
+                </button>
+            </div>
         </div>
     );
 }
-

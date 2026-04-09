@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { deleteSession, startSession, stopSession } from "@/lib/api";
+import { SessionSummary } from "@/lib/types";
 
 import { invalidateResource, invalidateResourcePrefix } from "./usePollingResource";
 
@@ -12,8 +13,11 @@ type SessionCommandOptions = {
     refreshStatus: () => Promise<void>;
     onSelectSession: (sessionId: string | null) => void;
     onOpenReport: () => void;
+    onResetWorkspacePanels: () => void;
     onResetCurrentSession: () => void;
 };
+
+type ResumableSession = Pick<SessionSummary, "session_id" | "global_goal">;
 
 export function useSessionCommands(options: SessionCommandOptions) {
     const {
@@ -22,12 +26,20 @@ export function useSessionCommands(options: SessionCommandOptions) {
         refreshStatus,
         onSelectSession,
         onOpenReport,
+        onResetWorkspacePanels,
         onResetCurrentSession,
     } = options;
 
     const [isNewSessionDialogOpen, setIsNewSessionDialogOpen] = useState(false);
     const [draftGoal, setDraftGoal] = useState("");
     const [isStarting, setIsStarting] = useState(false);
+
+    const invalidateSessionViews = () => {
+        invalidateResource("system-status");
+        invalidateResource("sessions");
+        invalidateResourcePrefix("tree:");
+        invalidateResourcePrefix("report:");
+    };
 
     const handleStartSession = async () => {
         if (!draftGoal.trim()) {
@@ -37,10 +49,7 @@ export function useSessionCommands(options: SessionCommandOptions) {
         setIsStarting(true);
         try {
             const response = await startSession(draftGoal);
-            invalidateResource("system-status");
-            invalidateResource("sessions");
-            invalidateResourcePrefix("tree:");
-            invalidateResourcePrefix("report:");
+            invalidateSessionViews();
             await Promise.all([refreshSessions(), refreshStatus()]);
             onSelectSession(response.session_id);
             setIsNewSessionDialogOpen(false);
@@ -61,6 +70,18 @@ export function useSessionCommands(options: SessionCommandOptions) {
         }
     };
 
+    const handleResumeSession = async (session: ResumableSession) => {
+        const response = await startSession(
+            session.global_goal,
+            false,
+            session.session_id,
+        );
+        invalidateSessionViews();
+        await Promise.all([refreshSessions(), refreshStatus()]);
+        onResetWorkspacePanels();
+        onSelectSession(response.session_id);
+    };
+
     const handleStopAndReport = async () => {
         await stopSession();
         invalidateResource("system-status");
@@ -78,6 +99,7 @@ export function useSessionCommands(options: SessionCommandOptions) {
         changeNewSessionGoal: setDraftGoal,
         startSession: handleStartSession,
         deleteSession: handleDeleteSession,
+        resumeSession: handleResumeSession,
         stopAndReport: handleStopAndReport,
     };
 }

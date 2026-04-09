@@ -11,7 +11,7 @@
 - Python 基线：[`../.python-version`](../.python-version) 固定为 `3.12`
 - Python 依赖来源：[`../pyproject.toml`](../pyproject.toml) 和 [`../uv.lock`](../uv.lock)
 - Python 环境管理：只使用 `uv`
-- Node 基线：CI 采用 `Node 20`
+- Node 基线：项目前端工具链与本地验收统一使用 `Node 20`
 
 禁止直接使用：
 
@@ -83,6 +83,7 @@ npm run dev
 | `src/frontend/components/` | 页面组件与细分展示组件 |
 | `src/frontend/hooks/` | 轮询、命令、节点详情、报告状态、全局错误 |
 | `src/frontend/lib/` | API client、contracts、共享类型、工具函数 |
+| `src/frontend/scripts/` | 前端本地工具链包装脚本（如 Playwright 启动入口） |
 | `tests/frontend/` | 前端 Vitest、MSW、Playwright 测试文件 |
 
 ### 3.3 Runtime Data
@@ -113,6 +114,8 @@ npm run dev
 - 会话和报告缓存统一落在 `storage.session_db_path`
 - 默认 SQLite 文件路径是 `data/sessions/deepquestiontree.sqlite3`
 - [`.env.example`](../.env.example) 现在代表“真实 provider 优先”的样板；离线调试请改用 [`.env.mock.example`](../.env.mock.example)
+- 默认真实 provider 为 Deepseek，经由 OpenAI-compatible client 接入
+- 默认 `llm.generation_model=deepseek-chat`、`llm.decision_model=deepseek-reasoner`
 - `RuntimeModuleFactory` 会在真实 provider 模式启动前预检 `llm.api_key`、`llm.base_url`、`llm.generation_model` 和 `llm.decision_model`
 
 ## 5. Change Synchronization Points
@@ -146,6 +149,8 @@ npm run dev
 - `/api/status` 只做轻量轮询
 - `TreeResponse.session_revision` 驱动树数据刷新
 - `TreeCanvas` 在拓扑不变时复用旧布局并跳过额外 viewport fit
+- `History` 的 `Resume Session` 走 `useSessionCommands.resumeSession()` -> `POST /api/start(session_id=...)`
+- 恢复会话时必须同时关闭 `Node Details` / `Exploration Report`，否则同一 session 重新选中时不会自动清掉旧面板
 
 ### 5.3 改测试入口时
 
@@ -171,6 +176,12 @@ npm run dev
 - `tests/unit/test_checker.py`
 
 如果结构化输出的顶层形状、checker 决策字段、模型路由或 fallback 行为发生变化，必须同时更新契约文档和对应测试。
+
+当前 prompt / toolchain 额外约束：
+
+- `PromptManager` 使用 Jinja `StrictUndefined`；改 prompt 变量时必须同步更新 `tests/unit/test_prompt_manager.py`
+- `config/prompts.yaml` 只保留活跃调用项，不要保留未使用 prompt
+- `src/frontend/vitest.config.ts` 中 `@testing-library/*` 只允许稳定包入口 alias，不要再指向包内部 `dist` 路径
 
 ## 6. Quality And Validation
 

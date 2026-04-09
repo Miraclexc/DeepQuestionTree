@@ -1,6 +1,6 @@
 # LLM Structured Output Contract
 
-> Last Updated: 2026-04-07
+> Last Updated: 2026-04-08
 >
 > 本页唯一负责：定义后端 LLM 调用的结构化输出契约、调用方映射、provider 边界、异常与 fallback 语义。
 
@@ -18,7 +18,7 @@
 
 - `json_object` 只用于明确要求对象形状的调用。
 - `json_array` 依赖 Prompt 明确要求数组，并由客户端兜底校验顶层形状。
-- 评分类调用当前仍使用 `text`，要求模型直接返回数字文本。
+- `PromptManager` 使用 Jinja `StrictUndefined`；缺模板变量或缺 key 会直接抛错，视为配置问题而不是普通模型噪声。
 
 ## 2. Callsite Matrix
 
@@ -27,7 +27,9 @@
 | Caller | Prompt / behavior | Contract | Expected payload |
 |---|---|---|---|
 | `Questioner.generate_candidates()` | 生成后续问题 | `json_array` | `list[str]` |
-| `Questioner.evaluate_question_value()` | 评估问题价值 | `text` | 数字文本 |
+| `Checker.review_question()` | 统一执行问题预审、路径复核和价值打分 | `json_object` | `{"score": ..., "is_duplicate": ..., "reason": ...}` |
+| `Questioner.evaluate_question_value()` | 通过 `Checker.review_question(stage="score")` 复用价值打分，不再单独维护 prompt | `json_object` | 同 `QuestionReview` 载荷 |
+| `Checker.dedupe_facts()` | 生成事实合并计划 | `json_object` | `{"replace_existing": ..., "discard_new": ..., "keep_new": ...}` |
 | `Questioner.answer_question()` | 生成回答 | `text` | 普通文本 |
 | `Compressor.extract_facts()` | 提取事实 | `json_array` | `list[{"content": ..., "confidence": ...}]` |
 | `Integrator._extract_key_insights()` | 提取关键见解 | `json_array` | `list[str]` |
@@ -38,6 +40,7 @@
 
 当前实现继续基于 `chat.completions`：
 
+- 默认真实 provider 是 Deepseek，但运行时接口仍保持通用 `LLM__*` 配置与 OpenAI-compatible client。
 - 不引入 provider 专属 `json_schema` 或 Responses API。
 - `json_object` 可以使用通用兼容层的对象强约束。
 - `json_array` 在 OpenAI-compatible 生态中没有统一强约束，因此由 Prompt + 客户端校验共同保证。
@@ -58,6 +61,8 @@
 业务层 fallback 规则：
 
 - `Questioner.generate_candidates()`：失败时回退到默认问题列表。
+- `Checker.review_question()`：在 `CHECKER__FAIL_OPEN=true` 时回退到 fail-open 结果。
+- `Checker.dedupe_facts()`：在 `CHECKER__FAIL_OPEN=true` 时保留全部新事实。
 - `Compressor.extract_facts()`：失败时回退到规则提取事实。
 - `Integrator._suggest_next_steps()`：失败时回退到内置建议。
 - `Integrator._extract_key_insights()`：失败时返回空列表。

@@ -57,7 +57,10 @@ def resolve_provider_profile(
         api_key = _require_env(env, "E2E_DEEPSEEK_API_KEY")
         base_url = env.get("E2E_DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
         generation_model = env.get("E2E_DEEPSEEK_GENERATION_MODEL", "deepseek-chat")
-        decision_model = env.get("E2E_DEEPSEEK_DECISION_MODEL", generation_model)
+        decision_model = env.get(
+            "E2E_DEEPSEEK_DECISION_MODEL",
+            "deepseek-reasoner",
+        )
         return ProviderProfile(
             provider=requested_provider,
             api_key=api_key,

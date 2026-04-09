@@ -83,6 +83,11 @@ export function useDeepQuestionTree() {
         refreshStatus: statusQuery.refresh,
         onSelectSession: setCurrentSessionId,
         onOpenReport: reportState.openReport,
+        onResetWorkspacePanels: () => {
+            reportState.closeReport();
+            nodeDetails.closeNode();
+            nodeDetails.clearNode();
+        },
         onResetCurrentSession: () => {
             setCurrentSessionId(null);
             reportState.closeReport();
@@ -196,6 +201,7 @@ export function useDeepQuestionTree() {
         onOpenNewSessionDialog: sessionCommands.openNewSessionDialog,
         onNodeClick: nodeDetails.openNode,
         onSelectSession: setCurrentSessionId,
+        onResumeSession: sessionCommands.resumeSession,
         onStartSession: sessionCommands.startSession,
         onStopAndReport: sessionCommands.stopAndReport,
     };

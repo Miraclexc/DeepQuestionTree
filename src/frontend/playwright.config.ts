@@ -53,7 +53,7 @@ function buildBackendEnvironment(): Record<string, string> {
             "deepseek-chat";
         env.LLM__DECISION_MODEL =
             process.env.PLAYWRIGHT_E2E_DEEPSEEK_DECISION_MODEL ??
-            env.LLM__GENERATION_MODEL;
+            "deepseek-reasoner";
         return env;
     }
 

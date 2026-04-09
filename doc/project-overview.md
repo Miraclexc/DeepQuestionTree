@@ -49,7 +49,7 @@ Backend (FastAPI app factory)
 | Repository boundary | 将 `SessionManager` 包装成显式应用层仓储 | `src/backend/services/session_repository.py` |
 | Core | 领域对象与 MCTS engine | `src/backend/core/*` |
 | Domain modules | checker、questioner、compressor、pruner、integrator、persistence | `src/backend/modules/*` |
-| LLM / checker | OpenAI-compatible client、mock client、基于 `purpose` 的模型路由、结构化输出契约 | `src/backend/llm/*` |
+| LLM / checker | OpenAI-compatible client（默认真实 provider 为 Deepseek）、mock client、基于 `purpose` 的模型路由、结构化输出契约 | `src/backend/llm/*` |
 
 ### 2.2 Frontend modules
 
@@ -130,6 +130,9 @@ Backend (FastAPI app factory)
 - 后端不读取 `src/frontend/.env.local`
 - 前端只读取自己的 `NEXT_PUBLIC_*`
 - 默认样板保持真实 provider 优先；离线 mock 另见根目录 `.env.mock.example`
+- 默认真实 provider 为 Deepseek，仍只通过 `LLM__*` 配置覆盖
+- 默认 `LLM__GENERATION_MODEL=deepseek-chat`、`LLM__DECISION_MODEL=deepseek-reasoner`
+- 若部署不兼容 `deepseek-reasoner`，需手工覆盖 `LLM__DECISION_MODEL`，当前不做自动 fallback
 
 典型来源：
 
@@ -156,10 +159,11 @@ Backend (FastAPI app factory)
 - `json_object` 通过 OpenAI-compatible `response_format={"type":"json_object"}` 约束；
 - `json_array` 不依赖 provider 的对象模式，而是由 Prompt 明确数组格式，再由客户端校验顶层必须是数组；
 - 业务模块只消费解析后的结构化载荷，不再在多个模块里重复 `json.loads()`。
+- `PromptManager` 使用单一 Jinja `Environment` + `StrictUndefined`；缺 key 或缺参都会直接失败，而不是静默渲染空字符串。
 
 ### 4.2 Checker boundary
 
-当前系统不再暴露 embedding / 余弦相似度接口。问题剪枝和事实合并统一改为 checker 链路：
+当前问题剪枝和事实合并统一走 checker 链路：
 
 - `checker.review_question()`：支持 `pre` / `post` / `score`
 - `checker.dedupe_facts()`：一次性输出事实合并计划
@@ -170,7 +174,7 @@ Backend (FastAPI app factory)
 
 ## 5. API And Read-Model Shape
 
-当前统一 API 面只有一套 `/api/*` 路由。旧的 `/api/visualizer/*` 读取接口已移除。
+当前统一 API 面只有一套 `/api/*` 路由。
 
 当前前端消费的不是领域对象本身，而是 DTO 层构建的 read-model：
 
@@ -198,12 +202,12 @@ Backend (FastAPI app factory)
 
 - 可以创建新探索
 - 可以查看历史会话
+- 可以从 `History` 恢复 `paused` / `completed` / `error` 会话
 - 可以查看节点详情
 - 可以生成报告或停止后生成报告
 - 可以删除会话
+- 恢复会话时会关闭当前节点详情和报告视图，回到树工作台
 - 当前树画布在拓扑不变时复用 Dagre 位置，只更新节点 payload
-
-当前前端没有显式暴露“从历史会话继续运行探索”的按钮，尽管后端 `POST /api/start` 支持可选 `session_id`。
 
 ## 7. Current Boundaries And Gaps
 
@@ -212,8 +216,8 @@ Backend (FastAPI app factory)
 - 不引入外部数据库服务
 - 不引入实时推送
 - 仍然采用轮询式工作台
-- `config/settings.yaml` 中的默认模型值仍需结合实际部署环境审查
-- 浏览器 smoke 只覆盖一条 happy path，不做视觉回归和多浏览器矩阵
+- 默认真实 provider 为 Deepseek；其他 OpenAI-compatible 部署仍通过 `LLM__*` 手工覆盖
+- 浏览器 smoke 覆盖创建、停止/报告、恢复和继续工作台的主干链路，但不做视觉回归和多浏览器矩阵
 
 ## 8. Related Documents
 

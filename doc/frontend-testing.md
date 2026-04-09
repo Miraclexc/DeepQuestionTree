@@ -1,10 +1,10 @@
 # Frontend Testing
 
-> Last Updated: 2026-04-07
+> Last Updated: 2026-04-08
 >
 > 本页唯一负责：维护前端专属测试布局、Node 工具链命令、Vitest / MSW / Playwright 细节与浏览器 smoke 约束。
 
-项目级测试总览、CI 语义和真实 provider E2E 统一见 [`testing-and-e2e.md`](./testing-and-e2e.md)。
+项目级测试总览、本地验收语义和真实 provider E2E 统一见 [`testing-and-e2e.md`](./testing-and-e2e.md)。
 
 ## 1. Layout
 
@@ -24,6 +24,7 @@ tests/frontend/
 对应配置文件位于：
 
 ```text
+src/frontend/scripts/run-playwright.cjs
 src/frontend/vitest.config.ts
 src/frontend/playwright.config.ts
 ```
@@ -78,6 +79,7 @@ npm run test:ci
 - `include` 指向根 `tests/frontend/**/*.{test,spec}.{ts,tsx}`
 - `exclude` 明确排除 `tests/frontend/e2e/`
 - 通过 alias 指向前端 `node_modules` 和根目录 `tests/frontend/setup`
+- `@testing-library/react` / `@testing-library/user-event` 统一走稳定包入口，不再绑定到包内部 `dist` 路径
 
 ## 4. Support Files And Stubs
 
@@ -107,6 +109,8 @@ npm run test:ci
 ## 5. Playwright Browser Smoke
 
 [`../src/frontend/playwright.config.ts`](../src/frontend/playwright.config.ts) 会自动启动两个本地服务。
+
+`npm run test:e2e` 当前通过 [`../src/frontend/scripts/run-playwright.cjs`](../src/frontend/scripts/run-playwright.cjs) 启动官方 Playwright CLI，目的是让仓库根的 `tests/frontend/e2e/` 仍然使用标准 `@playwright/test` 入口，同时正确解析前端自己的 `node_modules`。
 
 ### 5.1 Backend
 
@@ -146,8 +150,8 @@ npm run build && npm run start -- --hostname 127.0.0.1 --port <playwright-fronte
 
 补充约束：
 
-- Playwright 不再注入任何 `EMBEDDING__*` 环境变量
-- 当 provider 为真实模型时，后端核查链路统一复用 `LLM__DECISION_MODEL`
+- Playwright mock smoke 不依赖任何 provider 专属别名变量
+- 当 provider 为 `deepseek` 时，后端真实模型链路仍只使用 `LLM__GENERATION_MODEL` 和 `LLM__DECISION_MODEL`
 
 ## 6. Current Boundaries
 
@@ -158,7 +162,10 @@ npm run build && npm run start -- --hostname 127.0.0.1 --port <playwright-fronte
   - `History` 中出现 session
   - tree 出现节点
   - 点击节点打开 `Node Details`
-  - 关闭节点面板后打开 `Exploration Report`
+  - `Stop & Report` 打开 `Exploration Report`
+  - 关闭报告后从 `History` 点击 `Resume Session`
+  - 回到树工作台并继续显示当前 session
+  - 恢复后断言以“树仍可见、临时面板被关闭”为准；mock 模式下 session 可能很快再次完成，不要把 `Resume Session` 按钮瞬时消失当成稳定条件
 - 不做多浏览器矩阵
 - 不做视觉回归
 - 不做前端真实 provider 矩阵

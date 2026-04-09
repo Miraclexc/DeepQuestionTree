@@ -10,13 +10,13 @@ const testingLibraryJestDomPath = path.resolve(
     frontendNodeModules,
     "@testing-library/jest-dom/vitest.js",
 );
-const testingLibraryReactPath = path.resolve(
+const testingLibraryReactPackagePath = path.resolve(
     frontendNodeModules,
-    "@testing-library/react/dist/index.js",
+    "@testing-library/react",
 );
-const testingLibraryUserEventPath = path.resolve(
+const testingLibraryUserEventPackagePath = path.resolve(
     frontendNodeModules,
-    "@testing-library/user-event/dist/esm/index.js",
+    "@testing-library/user-event",
 );
 const mswCorePath = path.resolve(frontendNodeModules, "msw/lib/core/index.mjs");
 const mswNodePath = path.resolve(frontendNodeModules, "msw/lib/node/index.mjs");
@@ -59,11 +59,11 @@ export default defineConfig({
             },
             {
                 find: /^@testing-library\/react$/,
-                replacement: testingLibraryReactPath,
+                replacement: testingLibraryReactPackagePath,
             },
             {
                 find: /^@testing-library\/user-event$/,
-                replacement: testingLibraryUserEventPath,
+                replacement: testingLibraryUserEventPackagePath,
             },
             { find: /^html2pdf\.js$/, replacement: html2pdfStubPath },
             { find: /^msw\/node$/, replacement: mswNodePath },
@@ -85,11 +85,11 @@ export default defineConfig({
             },
             {
                 find: /^@testing-library\/react$/,
-                replacement: testingLibraryReactPath,
+                replacement: testingLibraryReactPackagePath,
             },
             {
                 find: /^@testing-library\/user-event$/,
-                replacement: testingLibraryUserEventPath,
+                replacement: testingLibraryUserEventPackagePath,
             },
             { find: /^html2pdf\.js$/, replacement: html2pdfStubPath },
             { find: /^msw\/node$/, replacement: mswNodePath },

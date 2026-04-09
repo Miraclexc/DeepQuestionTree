@@ -92,6 +92,8 @@ export function ReportView({ report, isLoading, onClose }: ReportViewProps) {
                         <button
                             onClick={onClose}
                             className="p-2 rounded-md hover:bg-destructive/10 hover:text-destructive transition-colors text-muted-foreground"
+                            title="Close report"
+                            aria-label="Close report"
                         >
                             <X className="h-5 w-5" />
                         </button>

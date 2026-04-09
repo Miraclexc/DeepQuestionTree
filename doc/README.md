@@ -1,6 +1,6 @@
 # Documentation Index
 
-> Last Updated: 2026-04-07
+> Last Updated: 2026-04-08
 >
 > 本页唯一负责：按受众和职责组织文档入口，不承载实现细节本身。
 
@@ -22,7 +22,7 @@
 
 | Document | 唯一职责 |
 |---|---|
-| [testing-and-e2e.md](./testing-and-e2e.md) | 项目级测试总览：`run_tests.py` 语义、质量门禁、CI 约束、真实 provider E2E 与手动验收主流程。 |
+| [testing-and-e2e.md](./testing-and-e2e.md) | 项目级测试总览：`run_tests.py` 语义、质量门禁、本地验收约束、真实 provider E2E 与手动验收主流程。 |
 | [frontend-testing.md](./frontend-testing.md) | 前端专属测试细节：Vitest、MSW、Playwright、stub、浏览器 smoke 和前端命令。 |
 
 ## 架构与接口

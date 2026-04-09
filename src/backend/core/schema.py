@@ -167,7 +167,7 @@ class SessionStatus(str, Enum):
 
 
 class SessionData(BaseModel):
-    """完整的会话数据，可直接序列化为 JSON 文件"""
+    """完整的会话聚合数据，由 SQLite 仓储读写并作为运行时活跃会话载荷。"""
 
     session_id: str = Field(
         default_factory=lambda: str(uuid.uuid4()), description="会话的唯一标识符"
@@ -293,33 +293,3 @@ class SessionData(BaseModel):
                 break
 
         return path
-
-
-# 用于前端响应的数据结构
-class TreeNodeData(BaseModel):
-    """前端树节点数据"""
-
-    id: str
-    label: str  # 显示的问题摘要
-    visits: int
-    value: float
-    depth: int
-    isPruned: bool
-    isProcessing: bool
-    factsCount: int
-    question: Optional[str] = None  # 完整问题
-
-
-class TreeEdge(BaseModel):
-    """前端树边数据"""
-
-    id: str
-    source: str
-    target: str
-
-
-class TreeResponse(BaseModel):
-    """前端树数据响应"""
-
-    nodes: List[Dict]
-    edges: List[Dict]

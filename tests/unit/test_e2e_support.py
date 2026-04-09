@@ -47,7 +47,7 @@ def test_deepseek_profile_uses_default_values():
     assert profile.api_key == "sk-deepseek"
     assert profile.base_url == "https://api.deepseek.com/v1"
     assert profile.generation_model == "deepseek-chat"
-    assert profile.decision_model == "deepseek-chat"
+    assert profile.decision_model == "deepseek-reasoner"
     assert profile.api_token == "test-token"
     assert profile.timeout_seconds == 180
     assert profile.max_simulations == 2
@@ -72,7 +72,7 @@ def test_missing_required_api_key_raises_clear_error():
 
 
 @pytest.mark.unit
-def test_build_backend_environment_does_not_inject_embedding_overrides():
+def test_build_backend_environment_does_not_inject_legacy_provider_overrides():
     profile = resolve_provider_profile(
         provider="deepseek",
         environ={

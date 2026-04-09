@@ -1,12 +1,9 @@
-import {
-    expect,
-    test,
-} from "../../../src/frontend/node_modules/@playwright/test/index.mjs";
+import { expect, test } from "@playwright/test";
 
 const goal = "Assess battery recycling policy impacts";
 const waitTimeout = Number(process.env.PLAYWRIGHT_ASSERT_TIMEOUT_MS ?? 30000);
 
-test("browser smoke covers create session, tree navigation and report opening", async ({
+test("browser smoke covers create, stop, resume and report opening", async ({
     page,
 }) => {
     await page.goto("/");
@@ -36,8 +33,31 @@ test("browser smoke covers create session, tree navigation and report opening", 
     });
     await page.getByRole("button", { name: "Close node details" }).click();
 
-    await page.getByRole("button", { name: "Generate Report" }).click();
+    page.once("dialog", async (dialog) => {
+        await dialog.accept();
+    });
+    await page.getByRole("button", { name: "Stop & Report" }).click();
     await expect(page.getByText("Exploration Report")).toBeVisible({
         timeout: waitTimeout,
     });
+    await page.getByRole("button", { name: "Close report" }).click();
+    await expect(page.getByText("Exploration Report")).toHaveCount(0);
+
+    await page.locator(".react-flow__node").first().click();
+    await expect(page.getByText("Node Details")).toBeVisible({
+        timeout: waitTimeout,
+    });
+
+    const sessionRow = page
+        .getByRole("button", { name: new RegExp(goal, "i") })
+        .first()
+        .locator("xpath=..");
+    await sessionRow.hover();
+    await sessionRow.getByRole("button", { name: "Resume Session" }).click();
+
+    await expect(page.locator(".react-flow__node").first()).toBeVisible({
+        timeout: waitTimeout,
+    });
+    await expect(page.getByText("Node Details")).toHaveCount(0);
+    await expect(page.getByText("Exploration Report")).toHaveCount(0);
 });

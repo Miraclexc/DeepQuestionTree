@@ -39,6 +39,7 @@ export default function DeepQuestionTree() {
         onOpenNewSessionDialog,
         onNodeClick,
         onSelectSession,
+        onResumeSession,
         onStartSession,
         onStopAndReport,
     } = useDeepQuestionTree();
@@ -49,6 +50,7 @@ export default function DeepQuestionTree() {
                 sessions={sessions}
                 selectedSessionId={currentSessionId}
                 onSelectSession={onSelectSession}
+                onResumeSession={onResumeSession}
                 onDeleteSession={onDeleteSession}
                 onNewSession={onOpenNewSessionDialog}
                 systemStatus={systemStatus}

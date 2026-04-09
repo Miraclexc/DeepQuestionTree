@@ -160,7 +160,7 @@ def build_frontend_e2e_environment(
         )
         env["PLAYWRIGHT_E2E_DEEPSEEK_DECISION_MODEL"] = env.get(
             "E2E_DEEPSEEK_DECISION_MODEL",
-            env["PLAYWRIGHT_E2E_DEEPSEEK_GENERATION_MODEL"],
+            "deepseek-reasoner",
         )
         env["PLAYWRIGHT_ASSERT_TIMEOUT_MS"] = "120000"
         env["PLAYWRIGHT_TEST_TIMEOUT_MS"] = "300000"

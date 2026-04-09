@@ -1,6 +1,6 @@
 # User Guide
 
-> Last Updated: 2026-04-07
+> Last Updated: 2026-04-08
 >
 > 本页唯一负责：面向本地使用者说明如何启动并使用 DeepQuestionTree 工作台。
 
@@ -45,6 +45,16 @@ copy .env.example .env
 security:
   api_token: "dev-token"
 ```
+
+默认真实 provider 样板为：
+
+```env
+LLM__BASE_URL=https://api.deepseek.com/v1
+LLM__GENERATION_MODEL=deepseek-chat
+LLM__DECISION_MODEL=deepseek-reasoner
+```
+
+如果你的部署环境不支持 `deepseek-reasoner`，请只覆盖 `LLM__DECISION_MODEL`；系统不会自动切回别的模型。
 
 默认会话数据库文件位于：
 
@@ -108,7 +118,7 @@ npm run dev
 - 如果后端可用，底部连接状态会显示正常。
 - `New Exploration` 只创建新的探索，不会复用旧会话 ID。
 
-### 4.2 查看历史会话
+### 4.2 查看或恢复历史会话
 
 左侧 `History` 会列出本地已保存的会话。点击某条记录后：
 
@@ -116,7 +126,11 @@ npm run dev
 - 顶部会显示该会话的目标和短 ID。
 - 你可以继续查看节点详情、打开报告或删除会话。
 
-当前前端 UI 不提供“从历史会话继续运行探索”的显式按钮。历史会话在界面中的“恢复”含义是恢复查看，不是重新开始计算。
+当会话状态是 `paused`、`completed` 或 `error` 时，把鼠标悬停到对应记录上，还会出现 `Resume Session` 按钮。点击后：
+
+- 前端会调用现有恢复接口，继续使用原会话 ID 运行；
+- 当前打开的 `Node Details` 和 `Exploration Report` 会先关闭；
+- 主区域会回到树工作台，并重新选中该会话。
 
 ### 4.3 查看节点详情
 
@@ -141,6 +155,7 @@ npm run dev
 
 - 运行中先看过一次报告后，只要问题树继续推进，旧报告就会自动失效。
 - 旧会话恢复运行后，恢复前生成的报告不会再被当作当前报告直接复用。
+- `running` 会话不会显示 `Resume Session`，因为它本身已经处于活动状态。
 
 报告视图支持三个层面：
 
@@ -211,7 +226,7 @@ npm run dev
 - 后端是否仍指向同一个 `STORAGE__SESSION_DB_PATH`
 - `data/sessions/deepquestiontree.sqlite3` 是否仍存在
 
-系统会在启动时和 API 查询时从当前 SQLite 文件读取历史会话；如果数据库路径切换到了临时位置，旧历史不会自动出现在当前环境里。旧版 `data/sessions/*.json` 不会被自动读取。
+系统会在启动时和 API 查询时从当前 SQLite 文件读取历史会话；如果数据库路径切换到了临时位置，旧历史不会自动出现在当前环境里。
 
 ### `Stop & Report` 按钮不可点击
 

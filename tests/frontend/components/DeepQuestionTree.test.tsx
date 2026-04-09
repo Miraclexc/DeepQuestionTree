@@ -48,6 +48,7 @@ describe("DeepQuestionTree", () => {
             onOpenNewSessionDialog: vi.fn(),
             onNodeClick: vi.fn(),
             onSelectSession: vi.fn(),
+            onResumeSession: vi.fn().mockResolvedValue(undefined),
             onStartSession: vi.fn().mockResolvedValue(undefined),
             onStopAndReport: vi.fn().mockResolvedValue(undefined),
         });

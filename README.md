@@ -53,6 +53,14 @@ copy .env.mock.example .env
 - `LLM__DECISION_MODEL`：唯一的核查模型，负责问题预审、低价值路径复核与事实合并判定
 - `CHECKER__*`：控制历史窗口、字面归一化短路和 fail-open 行为
 
+默认真实 provider 已收敛为 Deepseek，并通过 OpenAI-compatible client 接入：
+
+- `LLM__BASE_URL=https://api.deepseek.com/v1`
+- `LLM__GENERATION_MODEL=deepseek-chat`
+- `LLM__DECISION_MODEL=deepseek-reasoner`
+
+如果部署环境不支持 `deepseek-reasoner`，请直接覆盖 `LLM__DECISION_MODEL`；当前不会自动 fallback 到别的模型。
+
 默认会话与报告持久化文件为：
 
 - `data/sessions/deepquestiontree.sqlite3`
@@ -105,5 +113,5 @@ localStorage.setItem("dqt.apiToken", "dev-token");
 
 - 真实架构与边界：[`doc/project-overview.md`](./doc/project-overview.md)
 - API、鉴权与错误契约：[`doc/application-layer-and-auth.md`](./doc/application-layer-and-auth.md)
-- 项目级测试、CI 与真实 E2E：[`doc/testing-and-e2e.md`](./doc/testing-and-e2e.md)
+- 项目级测试、本地验收与真实 E2E：[`doc/testing-and-e2e.md`](./doc/testing-and-e2e.md)
 - 前端测试细节：[`doc/frontend-testing.md`](./doc/frontend-testing.md)

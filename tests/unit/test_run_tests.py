@@ -150,7 +150,7 @@ def test_build_frontend_e2e_environment_maps_deepseek_provider(tmp_path):
     assert env["PLAYWRIGHT_E2E_DEEPSEEK_API_KEY"] == "sk-deepseek"
     assert env["PLAYWRIGHT_E2E_DEEPSEEK_BASE_URL"] == "https://api.deepseek.com/v1"
     assert env["PLAYWRIGHT_E2E_DEEPSEEK_GENERATION_MODEL"] == "deepseek-chat"
-    assert env["PLAYWRIGHT_E2E_DEEPSEEK_DECISION_MODEL"] == "deepseek-chat"
+    assert env["PLAYWRIGHT_E2E_DEEPSEEK_DECISION_MODEL"] == "deepseek-reasoner"
     assert "EMBEDDING__USE_LOCAL" not in env
     assert "EMBEDDING__LOCAL_FILES_ONLY" not in env
     assert "EMBEDDING__FALLBACK_MODE" not in env

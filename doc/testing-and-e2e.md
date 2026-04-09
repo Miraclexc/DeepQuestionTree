@@ -2,7 +2,7 @@
 
 > Last Updated: 2026-04-08
 >
-> 本页唯一负责：维护项目级测试总览、`run_tests.py` 语义、CI 约束、真实 provider E2E 与手动验收主流程。
+> 本页唯一负责：维护项目级测试总览、`run_tests.py` 语义、本地验收约束、真实 provider E2E 与手动验收主流程。
 
 前端测试的 Vitest / MSW / Playwright 细节不在本页维护，统一见 [`frontend-testing.md`](./frontend-testing.md)。
 
@@ -28,7 +28,7 @@
 uv run python run_tests.py quality
 ```
 
-项目级本地 CI 验收：
+项目级本地验收（命令名保留为 `ci`）：
 
 ```bash
 uv run python run_tests.py ci
@@ -95,15 +95,14 @@ cd src/frontend && npm run test -- --run ../../tests/frontend/lib/contracts.test
 | `frontend-coverage` | 跑前端覆盖率 |
 | `e2e [provider]` | 跑真实 provider E2E |
 
-## 4. CI Constraints
+## 4. Local Acceptance Constraints
 
-默认 CI 工作流位于 [`../.github/workflows/ci.yml`](../.github/workflows/ci.yml)，当前阻塞环境固定为：
+仓库已移除 GitHub Actions CI 工作流；当前仍保留一套项目级本地验收入口与约束：
 
-- `windows-latest`
 - `Python 3.12`
 - `Node 20`
 
-当前阻塞项：
+当前本地验收阻塞项：
 
 - `uv run python run_tests.py quality`
 - `uv run python run_tests.py ci`
@@ -113,9 +112,9 @@ cd src/frontend && npm run test -- --run ../../tests/frontend/lib/contracts.test
 - `data/sessions`
 - `data/logs`
 
-如果发现新增或删除运行产物，CI 验收直接失败。
+如果发现新增或删除运行产物，本地验收直接失败。
 
-CI 与 pytest 隔离运行时会显式重定向：
+本地验收与 pytest 隔离运行时会显式重定向：
 
 - `STORAGE__SESSIONS_DIR`
 - `STORAGE__SESSION_DB_PATH`
@@ -168,7 +167,7 @@ uv run python -m src.backend.main
 
 - `base_url=https://api.deepseek.com/v1`
 - `generation_model=deepseek-chat`
-- `decision_model=deepseek-chat`
+- `decision_model=deepseek-reasoner`
 
 #### `openai-compatible`
 
@@ -197,15 +196,15 @@ uv run python -m src.backend.main
 3. 创建新会话
 4. 等待树渲染
 5. 点击节点打开 `Node Details`
-6. 点击 `Generate Report` 或 `Stop & Report`
-7. 刷新页面，确认 `History` 可恢复
-8. 删除会话，确认对应文件被移除
+6. 点击 `Stop & Report` 并确认报告打开
+7. 关闭报告后，在 `History` 中点击 `Resume Session`
+8. 删除会话，确认对应会话记录与报告缓存被移除
 
 通过标准：
 
 - UI 主闭环正常
 - SQLite 会话库写入当前配置的 `STORAGE__SESSION_DB_PATH`
-- 删除后对应 session/report 记录确实被清理
+- 删除后对应 session/report 记录确实从 SQLite 会话库中清理
 - 默认 `data/sessions`、`data/logs` 不被测试命令污染
 - 真实 provider 缺配置时立即返回清晰的 `configuration_error`
 - 致命 worker / engine 异常会把会话置为 `error`，并在 `/api/status` 中暴露错误消息
@@ -214,7 +213,7 @@ uv run python -m src.backend.main
 ## 7. Current Boundaries
 
 - 后端真实 E2E 只覆盖独立进程 HTTP API
-- 默认 CI 通过离线契约单测覆盖结构化输出接口，但不直连真实 provider
+- 默认本地验收通过离线契约单测覆盖结构化输出接口，但不直连真实 provider
 - 前端浏览器链路由 [`frontend-testing.md`](./frontend-testing.md) 维护
 - provider 抽象只存在于测试层，不改业务 DTO
-- E2E/CI 不再注入任何 `EMBEDDING__*` 变量；真实 provider 仅需 `LLM__GENERATION_MODEL` 与 `LLM__DECISION_MODEL`
+- E2E/本地验收只使用 `LLM__*` 真实 provider 配置，不引入额外 provider alias

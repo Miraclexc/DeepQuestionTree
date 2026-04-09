@@ -6,6 +6,7 @@ interface SessionListProps {
     sessions: SessionSummary[];
     selectedSessionId: string | null;
     onSelectSession: (id: string) => void;
+    onResumeSession: (session: SessionSummary) => void | Promise<void>;
     onDeleteSession: (id: string) => void;
 }
 
@@ -13,6 +14,7 @@ export function SessionList({
     sessions,
     selectedSessionId,
     onSelectSession,
+    onResumeSession,
     onDeleteSession,
 }: SessionListProps) {
     return (
@@ -27,6 +29,14 @@ export function SessionList({
                         session={session}
                         selected={selectedSessionId === session.session_id}
                         onSelect={onSelectSession}
+                        onResume={(sessionId) => {
+                            const resumableSession = sessions.find(
+                                (item) => item.session_id === sessionId,
+                            );
+                            if (resumableSession) {
+                                return onResumeSession(resumableSession);
+                            }
+                        }}
                         onDelete={onDeleteSession}
                     />
                 ))}
@@ -40,4 +50,3 @@ export function SessionList({
         </>
     );
 }
-

@@ -1,6 +1,8 @@
 import textwrap
 from pathlib import Path
 
+import yaml
+
 import src.backend.modules.persistence as persistence_module
 from src.backend.config_loader import load_settings, reload_settings
 
@@ -192,9 +194,30 @@ def test_load_settings_uses_defaults_when_config_file_is_missing(monkeypatch, tm
     settings = load_settings("config/settings.yaml")
 
     assert settings.app.api_port == 8001
+    assert settings.llm.base_url == "https://api.deepseek.com/v1"
+    assert settings.llm.generation_model == "deepseek-chat"
+    assert settings.llm.decision_model == "deepseek-reasoner"
     assert settings.checker.question_history_window == 50
     assert settings.storage.sessions_dir == "data/sessions"
     assert settings.storage.session_db_path == "data/sessions/deepquestiontree.sqlite3"
+
+
+def test_repository_real_provider_defaults_are_deepseek():
+    settings_payload = yaml.safe_load(
+        Path("config/settings.yaml").read_text(encoding="utf-8")
+    )
+
+    assert settings_payload["llm"]["base_url"] == "https://api.deepseek.com/v1"
+    assert settings_payload["llm"]["generation_model"] == "deepseek-chat"
+    assert settings_payload["llm"]["decision_model"] == "deepseek-reasoner"
+
+
+def test_env_example_real_provider_defaults_are_deepseek():
+    env_example = Path(".env.example").read_text(encoding="utf-8")
+
+    assert "LLM__BASE_URL=https://api.deepseek.com/v1" in env_example
+    assert "LLM__GENERATION_MODEL=deepseek-chat" in env_example
+    assert "LLM__DECISION_MODEL=deepseek-reasoner" in env_example
 
 
 def test_session_manager_uses_environment_overridden_storage_paths(

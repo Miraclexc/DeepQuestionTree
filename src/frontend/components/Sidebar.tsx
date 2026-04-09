@@ -9,6 +9,7 @@ interface SidebarProps {
     sessions: SessionSummary[];
     selectedSessionId: string | null;
     onSelectSession: (id: string) => void;
+    onResumeSession: (session: SessionSummary) => void | Promise<void>;
     onDeleteSession: (id: string) => void;
     onNewSession: () => void;
     systemStatus: 'connected' | 'disconnected' | 'unknown';
@@ -19,6 +20,7 @@ export function Sidebar({
     sessions,
     selectedSessionId,
     onSelectSession,
+    onResumeSession,
     onDeleteSession,
     onNewSession,
     systemStatus,
@@ -41,6 +43,7 @@ export function Sidebar({
                     sessions={sessions}
                     selectedSessionId={selectedSessionId}
                     onSelectSession={onSelectSession}
+                    onResumeSession={onResumeSession}
                     onDeleteSession={onDeleteSession}
                 />
             </div>

@@ -45,6 +45,7 @@ describe("useSessionCommands", () => {
         const refreshSessions = vi.fn().mockResolvedValue(undefined);
         const refreshStatus = vi.fn().mockResolvedValue(undefined);
         const onSelectSession = vi.fn();
+        const onResetWorkspacePanels = vi.fn();
 
         const { result } = renderHook(() =>
             useSessionCommands({
@@ -53,6 +54,7 @@ describe("useSessionCommands", () => {
                 refreshStatus,
                 onSelectSession,
                 onOpenReport: vi.fn(),
+                onResetWorkspacePanels,
                 onResetCurrentSession: vi.fn(),
             }),
         );
@@ -76,6 +78,7 @@ describe("useSessionCommands", () => {
         expect(refreshSessions).toHaveBeenCalled();
         expect(refreshStatus).toHaveBeenCalled();
         expect(onSelectSession).toHaveBeenCalledWith("session-9");
+        expect(onResetWorkspacePanels).not.toHaveBeenCalled();
         expect(result.current.isNewSessionDialogOpen).toBe(false);
         expect(result.current.draftGoal).toBe("");
     });
@@ -92,6 +95,7 @@ describe("useSessionCommands", () => {
                 refreshStatus: vi.fn().mockResolvedValue(undefined),
                 onSelectSession: vi.fn(),
                 onOpenReport: vi.fn(),
+                onResetWorkspacePanels: vi.fn(),
                 onResetCurrentSession,
             }),
         );
@@ -121,6 +125,7 @@ describe("useSessionCommands", () => {
                 refreshStatus,
                 onSelectSession: vi.fn(),
                 onOpenReport,
+                onResetWorkspacePanels: vi.fn(),
                 onResetCurrentSession: vi.fn(),
             }),
         );
@@ -135,5 +140,48 @@ describe("useSessionCommands", () => {
         expect(refreshStatus).toHaveBeenCalled();
         expect(refreshSessions).toHaveBeenCalled();
         expect(onOpenReport).toHaveBeenCalled();
+    });
+
+    it("resumes an existing session, clears transient panels and reselects it", async () => {
+        startSessionApiMock.mockResolvedValue({
+            session_id: "session-2",
+        });
+        const refreshSessions = vi.fn().mockResolvedValue(undefined);
+        const refreshStatus = vi.fn().mockResolvedValue(undefined);
+        const onSelectSession = vi.fn();
+        const onResetWorkspacePanels = vi.fn();
+
+        const { result } = renderHook(() =>
+            useSessionCommands({
+                currentSessionId: "session-1",
+                refreshSessions,
+                refreshStatus,
+                onSelectSession,
+                onOpenReport: vi.fn(),
+                onResetWorkspacePanels,
+                onResetCurrentSession: vi.fn(),
+            }),
+        );
+
+        await act(async () => {
+            await result.current.resumeSession({
+                session_id: "session-2",
+                global_goal: "Map data center power constraints",
+            });
+        });
+
+        expect(startSessionApiMock).toHaveBeenCalledWith(
+            "Map data center power constraints",
+            false,
+            "session-2",
+        );
+        expect(invalidateResourceMock).toHaveBeenCalledWith("system-status");
+        expect(invalidateResourceMock).toHaveBeenCalledWith("sessions");
+        expect(invalidateResourcePrefixMock).toHaveBeenCalledWith("tree:");
+        expect(invalidateResourcePrefixMock).toHaveBeenCalledWith("report:");
+        expect(refreshSessions).toHaveBeenCalled();
+        expect(refreshStatus).toHaveBeenCalled();
+        expect(onResetWorkspacePanels).toHaveBeenCalled();
+        expect(onSelectSession).toHaveBeenCalledWith("session-2");
     });
 });
