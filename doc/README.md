@@ -18,6 +18,12 @@
 |---|---|
 | [developer-guide.md](./developer-guide.md) | 面向开发者的环境基线、目录职责、read-model / infrastructure 边界、前后端调试方式、变更同步点和文档维护规则。 |
 
+## 研究与立项材料
+
+| Document | 唯一职责 |
+|---|---|
+| [research-funding-brief.md](./research-funding-brief.md) | 面向经费申请的研究价值、创新性与研发投入说明。 |
+
 ## 测试与验收
 
 | Document | 唯一职责 |
