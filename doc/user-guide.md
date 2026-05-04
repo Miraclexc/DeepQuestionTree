@@ -1,6 +1,6 @@
 # User Guide
 
-> Last Updated: 2026-04-09
+> Last Updated: 2026-05-04
 >
 > 本页唯一负责：面向本地使用者说明如何启动并使用 DeepQuestionTree 工作台。
 
@@ -46,15 +46,19 @@ security:
   api_token: "dev-token"
 ```
 
-默认真实 provider 样板为：
+默认真实 provider 样板为 DeepSeek V4 Preview：
 
 ```env
-LLM__BASE_URL=https://api.deepseek.com/v1
-LLM__GENERATION_MODEL=deepseek-chat
-LLM__DECISION_MODEL=deepseek-reasoner
+LLM__BASE_URL=https://api.deepseek.com
+LLM__GENERATION_MODEL=deepseek-v4-pro
+LLM__DECISION_MODEL=deepseek-v4-pro
+LLM__GENERATION_THINKING=false
+LLM__DECISION_THINKING=true
+LLM__GENERATION_REASONING_EFFORT=high
+LLM__DECISION_REASONING_EFFORT=high
 ```
 
-如果你的部署环境不支持 `deepseek-reasoner`，请只覆盖 `LLM__DECISION_MODEL`；系统不会自动切回别的模型。
+默认设计会在普通生成链路关闭 thinking，在 checker / 价值判断等 decision 链路开启 thinking。DeepSeek thinking 开关通过 `extra_body.thinking` 发送；`reasoning_effort` 只在对应链路开启 thinking 时作为顶层请求参数发送。`deepseek-chat` / `deepseek-reasoner` 是旧兼容别名，官方停用窗口为 2026-07-24；新部署请使用 `deepseek-v4-pro` 或按需覆盖为 `deepseek-v4-flash`。
 
 默认会话数据库文件位于：
 

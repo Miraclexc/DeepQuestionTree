@@ -27,6 +27,7 @@ class ProviderProfile:
     api_token: str
     timeout_seconds: int
     max_simulations: int
+    branch_factor: int
 
 
 def resolve_provider_profile(
@@ -42,24 +43,29 @@ def resolve_provider_profile(
         )
 
     api_token = env.get("E2E_API_TOKEN", "test-token")
-    timeout_seconds = _parse_positive_int(
-        env.get("E2E_TIMEOUT_SECONDS"),
-        default=180,
-        variable_name="E2E_TIMEOUT_SECONDS",
-    )
     max_simulations = _parse_positive_int(
         env.get("E2E_MAX_SIMULATIONS"),
-        default=2,
+        default=1,
         variable_name="E2E_MAX_SIMULATIONS",
+    )
+    branch_factor = _parse_positive_int(
+        env.get("E2E_BRANCH_FACTOR"),
+        default=2,
+        variable_name="E2E_BRANCH_FACTOR",
+    )
+    timeout_seconds = _parse_positive_int(
+        env.get("E2E_TIMEOUT_SECONDS"),
+        default=600,
+        variable_name="E2E_TIMEOUT_SECONDS",
     )
 
     if requested_provider == "deepseek":
         api_key = _require_env(env, "E2E_DEEPSEEK_API_KEY")
-        base_url = env.get("E2E_DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-        generation_model = env.get("E2E_DEEPSEEK_GENERATION_MODEL", "deepseek-chat")
+        base_url = env.get("E2E_DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+        generation_model = env.get("E2E_DEEPSEEK_GENERATION_MODEL", "deepseek-v4-pro")
         decision_model = env.get(
             "E2E_DEEPSEEK_DECISION_MODEL",
-            "deepseek-reasoner",
+            "deepseek-v4-pro",
         )
         return ProviderProfile(
             provider=requested_provider,
@@ -70,6 +76,7 @@ def resolve_provider_profile(
             api_token=api_token,
             timeout_seconds=timeout_seconds,
             max_simulations=max_simulations,
+            branch_factor=branch_factor,
         )
 
     if requested_provider == "openai-compatible":
@@ -86,6 +93,7 @@ def resolve_provider_profile(
             api_token=api_token,
             timeout_seconds=timeout_seconds,
             max_simulations=max_simulations,
+            branch_factor=branch_factor,
         )
 
     raise E2EConfigError(
@@ -125,6 +133,7 @@ def build_backend_environment(
             "STORAGE__LOGS_DIR": str(logs_dir),
             "MCTS__PARALLEL_WORKERS": "1",
             "MCTS__MAX_SIMULATIONS": str(profile.max_simulations),
+            "MCTS__BRANCH_FACTOR": str(profile.branch_factor),
         }
     )
     return env

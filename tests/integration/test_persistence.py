@@ -133,7 +133,9 @@ class TestPersistence:
         loaded_session = await session_manager.load_session(session.session_id)
 
         assert loaded_session is not None
-        assert loaded_session.token_accounting_version == session.token_accounting_version
+        assert (
+            loaded_session.token_accounting_version == session.token_accounting_version
+        )
         assert loaded_session.total_tokens_used == 321
         assert loaded_session.llm_usage.total_tokens == 321
         assert loaded_session.llm_usage.usage_by_model["answer-model"].tokens == 321

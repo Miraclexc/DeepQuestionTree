@@ -1,6 +1,6 @@
 # Application Layer And Auth
 
-> Last Updated: 2026-04-09
+> Last Updated: 2026-05-04
 >
 > 本页唯一负责：作为统一 API、鉴权规则、错误响应与 read-model 契约的单一事实来源。
 
@@ -14,7 +14,8 @@
 |---|---|---|
 | Controller | 接收 HTTP 参数、调用应用服务、返回 DTO | `src/backend/api/router.py` |
 | Auth dependency | 校验 Bearer Token | `src/backend/api/dependencies.py` |
-| DTO / contract | read-model 与报告契约归一化 | `src/backend/api/dto.py` |
+| DTO / contract | 请求/响应模型定义 | `src/backend/api/dto.py` |
+| Read-model builders | session、tree、node、report 响应归一化 | `src/backend/api/read_models.py` |
 | Command service | 启动、停止、删除会话 | `src/backend/services/session_command_service.py` |
 | Query service | 状态、会话、树、节点查询 | `src/backend/services/session_query_service.py` |
 | Report service | 基于会话版本做缓存判定、报告生成与稳定输出 | `src/backend/services/report_service.py` |
@@ -119,7 +120,7 @@ localStorage.setItem("dqt.apiToken", "dev-token");
 - `TreeResponse`
 - `NodeDetailResponse`
 
-这层归一化由 [`../src/backend/api/dto.py`](../src/backend/api/dto.py) 负责。
+模型定义由 [`../src/backend/api/dto.py`](../src/backend/api/dto.py) 负责；响应组装和兼容归一化由 [`../src/backend/api/read_models.py`](../src/backend/api/read_models.py) 负责。
 
 当前新增的轻量同步字段：
 
@@ -149,7 +150,7 @@ localStorage.setItem("dqt.apiToken", "dev-token");
 - `generated_at`
 - `error_message`
 
-旧缓存或失败载荷都会通过 `build_report_response()` 归一化。
+旧缓存或失败载荷都会通过 `src/backend/api/read_models.py` 中的 `build_report_response()` 归一化。
 
 `pruned_insights` 的当前语义是“独立诊断 read-model”：
 

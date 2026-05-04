@@ -41,10 +41,15 @@ class AppConfig(BaseModel):
 class LLMConfig(BaseModel):
     """LLM 配置"""
 
-    generation_model: str = "deepseek-chat"
-    decision_model: str = "deepseek-reasoner"
+    generation_model: str = "deepseek-v4-pro"
+    decision_model: str = "deepseek-v4-pro"
     api_key: str = ""
-    base_url: str = "https://api.deepseek.com/v1"
+    base_url: str = "https://api.deepseek.com"
+    enable_thinking_controls: bool = True
+    generation_thinking: bool = False
+    decision_thinking: bool = True
+    generation_reasoning_effort: str = "high"
+    decision_reasoning_effort: str = "high"
     timeout: int = 60
     max_retries: int = 3
 
@@ -56,6 +61,14 @@ class LLMConfig(BaseModel):
             env_var = value[2:-1]
             return os.getenv(env_var, "")
         return str(value)
+
+    @field_validator("generation_reasoning_effort", "decision_reasoning_effort")
+    @classmethod
+    def validate_reasoning_effort(cls, value: str) -> str:
+        effort = str(value or "").strip().lower()
+        if effort in {"high", "max"}:
+            return effort
+        raise ValueError("reasoning_effort must be 'high' or 'max'")
 
 
 class MCTSConfig(BaseModel):

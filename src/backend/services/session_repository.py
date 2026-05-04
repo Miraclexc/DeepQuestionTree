@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Mapping, Protocol
 
 from ..core.schema import CURRENT_TOKEN_ACCOUNTING_VERSION, SessionData
-from ..modules.persistence import SessionManager, get_session_manager
+from ..infrastructure.session_store import SessionManager, get_session_manager
 from .errors import ContractError, NotFoundError, PersistenceError
 
 

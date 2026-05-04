@@ -152,15 +152,23 @@ def build_frontend_e2e_environment(
         env["PLAYWRIGHT_E2E_DEEPSEEK_API_KEY"] = api_key
         env["PLAYWRIGHT_E2E_DEEPSEEK_BASE_URL"] = env.get(
             "E2E_DEEPSEEK_BASE_URL",
-            "https://api.deepseek.com/v1",
+            "https://api.deepseek.com",
         )
         env["PLAYWRIGHT_E2E_DEEPSEEK_GENERATION_MODEL"] = env.get(
             "E2E_DEEPSEEK_GENERATION_MODEL",
-            "deepseek-chat",
+            "deepseek-v4-pro",
         )
         env["PLAYWRIGHT_E2E_DEEPSEEK_DECISION_MODEL"] = env.get(
             "E2E_DEEPSEEK_DECISION_MODEL",
-            "deepseek-reasoner",
+            "deepseek-v4-pro",
+        )
+        env["PLAYWRIGHT_MCTS_MAX_SIMULATIONS"] = env.get(
+            "E2E_MAX_SIMULATIONS",
+            "1",
+        )
+        env["PLAYWRIGHT_MCTS_BRANCH_FACTOR"] = env.get(
+            "E2E_BRANCH_FACTOR",
+            "2",
         )
         env["PLAYWRIGHT_ASSERT_TIMEOUT_MS"] = "120000"
         env["PLAYWRIGHT_TEST_TIMEOUT_MS"] = "300000"
@@ -236,7 +244,7 @@ def run_ci_checks() -> int:
 
 def run_unit_tests() -> int:
     print("运行单元测试...")
-    return run_pytest(["tests/unit/", "-v", "-m", "unit"])
+    return run_pytest(["tests/unit/", "-v"])
 
 
 def run_integration_tests() -> int:

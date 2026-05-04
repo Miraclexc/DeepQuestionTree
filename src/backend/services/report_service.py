@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from ..api.dto import ReportResponse, build_report_response
+from ..api.dto import ReportResponse
+from ..api.read_models import build_report_response
 from ..config_loader import get_settings
 from ..core.schema import SessionData, SessionLlmUsage
 from ..llm.usage_tracking import LlmUsageRecorder, bind_usage_recorder

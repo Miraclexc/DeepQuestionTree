@@ -1,6 +1,6 @@
 # Frontend Testing
 
-> Last Updated: 2026-04-08
+> Last Updated: 2026-05-04
 >
 > 本页唯一负责：维护前端专属测试布局、Node 工具链命令、Vitest / MSW / Playwright 细节与浏览器 smoke 约束。
 
@@ -150,8 +150,10 @@ npm run build && npm run start -- --hostname 127.0.0.1 --port <playwright-fronte
 
 补充约束：
 
-- Playwright mock smoke 不依赖任何 provider 专属别名变量
+- Playwright mock smoke 不依赖任何 provider 专属别名变量，继续使用 `MCTS__MAX_SIMULATIONS=2`
 - 当 provider 为 `deepseek` 时，后端真实模型链路仍只使用 `LLM__GENERATION_MODEL` 和 `LLM__DECISION_MODEL`
+- 当 provider 为 `deepseek` 时，`run_tests.py frontend-e2e deepseek` 会把 `E2E_MAX_SIMULATIONS` 映射到 `PLAYWRIGHT_MCTS_MAX_SIMULATIONS`，把 `E2E_BRANCH_FACTOR` 映射到 `PLAYWRIGHT_MCTS_BRANCH_FACTOR`
+- DeepSeek Playwright smoke 默认使用 `PLAYWRIGHT_MCTS_MAX_SIMULATIONS=1`、`PLAYWRIGHT_MCTS_BRANCH_FACTOR=2`；真实 API key 只通过 `E2E_DEEPSEEK_API_KEY` 进入当前进程环境
 
 ## 6. Current Boundaries
 

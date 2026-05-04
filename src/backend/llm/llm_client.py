@@ -4,6 +4,7 @@ OpenAI 兼容 LLM 客户端实现
 """
 
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 import openai
 from tenacity import (
@@ -45,6 +46,12 @@ class OpenAICompatibleClient(BaseLLMClient):
 
         self.generation_model = settings.llm.generation_model
         self.decision_model = settings.llm.decision_model
+        self.base_url = settings.llm.base_url
+        self.enable_thinking_controls = settings.llm.enable_thinking_controls
+        self.generation_thinking = settings.llm.generation_thinking
+        self.decision_thinking = settings.llm.decision_thinking
+        self.generation_reasoning_effort = settings.llm.generation_reasoning_effort
+        self.decision_reasoning_effort = settings.llm.decision_reasoning_effort
         self.trace_logger = (
             get_llm_logger()
             if str(getattr(settings.logging, "level", "")).upper() == "DEBUG"
@@ -83,6 +90,11 @@ class OpenAICompatibleClient(BaseLLMClient):
             response_format = (
                 {"type": "json_object"} if response_contract == "json_object" else None
             )
+            extra_body = self._build_extra_body(model=model, purpose=purpose)
+            reasoning_effort = self._build_reasoning_effort(
+                model=model,
+                purpose=purpose,
+            )
 
             trace_logger = getattr(self, "trace_logger", None)
             if trace_logger is not None:
@@ -94,13 +106,19 @@ class OpenAICompatibleClient(BaseLLMClient):
                 )
 
             # 发送请求
-            response = await self.client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                response_format=response_format,
-            )
+            request_kwargs: dict[str, Any] = {
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "response_format": response_format,
+            }
+            if extra_body is not None:
+                request_kwargs["extra_body"] = extra_body
+            if reasoning_effort is not None:
+                request_kwargs["reasoning_effort"] = reasoning_effort
+
+            response = await self.client.chat.completions.create(**request_kwargs)
 
             # 提取内容
             content = response.choices[0].message.content or ""
@@ -196,6 +214,9 @@ class OpenAICompatibleClient(BaseLLMClient):
             "gpt-4o": 0.005,
             "gpt-3.5-turbo": 0.002,
             "deepseek-chat": 0.0014,
+            "deepseek-reasoner": 0.0042,
+            "deepseek-v4-pro": 0.0042,
+            "deepseek-v4-flash": 0.0014,
             "moonshot-v1-8k": 0.012,
         }
 
@@ -211,3 +232,56 @@ class OpenAICompatibleClient(BaseLLMClient):
             "",
             error=error,
         )
+
+    def _build_extra_body(
+        self,
+        *,
+        model: str,
+        purpose: Purpose,
+    ) -> dict[str, Any] | None:
+        if not self.enable_thinking_controls or not self._supports_thinking_controls(
+            model
+        ):
+            return None
+
+        thinking_enabled = (
+            self.decision_thinking
+            if purpose == "decision"
+            else self.generation_thinking
+        )
+        if not thinking_enabled:
+            return {"thinking": {"type": "disabled"}}
+
+        return {"thinking": {"type": "enabled"}}
+
+    def _build_reasoning_effort(
+        self,
+        *,
+        model: str,
+        purpose: Purpose,
+    ) -> str | None:
+        if not self.enable_thinking_controls or not self._supports_thinking_controls(
+            model
+        ):
+            return None
+
+        thinking_enabled = (
+            self.decision_thinking
+            if purpose == "decision"
+            else self.generation_thinking
+        )
+        if not thinking_enabled:
+            return None
+
+        reasoning_effort = (
+            self.decision_reasoning_effort
+            if purpose == "decision"
+            else self.generation_reasoning_effort
+        )
+        return reasoning_effort
+
+    def _supports_thinking_controls(self, model: str) -> bool:
+        parsed = urlparse(str(self.base_url or ""))
+        host = parsed.netloc.lower()
+        model_name = str(model or "").lower()
+        return host.endswith("deepseek.com") or model_name.startswith("deepseek-")

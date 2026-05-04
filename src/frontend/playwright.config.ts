@@ -44,16 +44,20 @@ function buildBackendEnvironment(): Record<string, string> {
 
     if (provider === "deepseek") {
         env.APP__MOCK_LLM = process.env.PLAYWRIGHT_BACKEND_MOCK_LLM ?? "false";
+        env.MCTS__MAX_SIMULATIONS =
+            process.env.PLAYWRIGHT_MCTS_MAX_SIMULATIONS ?? "1";
+        env.MCTS__BRANCH_FACTOR =
+            process.env.PLAYWRIGHT_MCTS_BRANCH_FACTOR ?? "2";
         env.LLM__API_KEY = requireEnv("PLAYWRIGHT_E2E_DEEPSEEK_API_KEY");
         env.LLM__BASE_URL =
             process.env.PLAYWRIGHT_E2E_DEEPSEEK_BASE_URL ??
-            "https://api.deepseek.com/v1";
+            "https://api.deepseek.com";
         env.LLM__GENERATION_MODEL =
             process.env.PLAYWRIGHT_E2E_DEEPSEEK_GENERATION_MODEL ??
-            "deepseek-chat";
+            "deepseek-v4-pro";
         env.LLM__DECISION_MODEL =
             process.env.PLAYWRIGHT_E2E_DEEPSEEK_DECISION_MODEL ??
-            "deepseek-reasoner";
+            "deepseek-v4-pro";
         return env;
     }
 

@@ -1,6 +1,6 @@
 # Documentation Index
 
-> Last Updated: 2026-04-08
+> Last Updated: 2026-05-04
 >
 > 本页唯一负责：按受众和职责组织文档入口，不承载实现细节本身。
 
@@ -16,7 +16,7 @@
 
 | Document | 唯一职责 |
 |---|---|
-| [developer-guide.md](./developer-guide.md) | 面向开发者的环境基线、目录职责、前后端调试方式、变更同步点和文档维护规则。 |
+| [developer-guide.md](./developer-guide.md) | 面向开发者的环境基线、目录职责、read-model / infrastructure 边界、前后端调试方式、变更同步点和文档维护规则。 |
 
 ## 测试与验收
 

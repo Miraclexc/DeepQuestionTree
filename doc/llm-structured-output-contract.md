@@ -1,6 +1,6 @@
 # LLM Structured Output Contract
 
-> Last Updated: 2026-04-08
+> Last Updated: 2026-05-04
 >
 > 本页唯一负责：定义后端 LLM 调用的结构化输出契约、调用方映射、provider 边界、异常与 fallback 语义。
 
@@ -40,7 +40,9 @@
 
 当前实现继续基于 `chat.completions`：
 
-- 默认真实 provider 是 Deepseek，但运行时接口仍保持通用 `LLM__*` 配置与 OpenAI-compatible client。
+- 默认真实 provider 是 DeepSeek V4 Preview，但运行时接口仍保持通用 `LLM__*` 配置与 OpenAI-compatible client。
+- 默认模型为 `deepseek-v4-pro`；generation 与 decision 两个 purpose 继续分开配置，便于切换到 `deepseek-v4-flash` 或其他 OpenAI-compatible 模型。
+- DeepSeek thinking 参数只在 DeepSeek 官方 endpoint 或 `deepseek-*` 模型名下自动注入：generation 默认关闭 thinking，decision 默认开启 thinking；`reasoning_effort=high` 只在对应链路开启 thinking 时作为顶层请求参数发送。
 - 不引入 provider 专属 `json_schema` 或 Responses API。
 - `json_object` 可以使用通用兼容层的对象强约束。
 - `json_array` 在 OpenAI-compatible 生态中没有统一强约束，因此由 Prompt + 客户端校验共同保证。

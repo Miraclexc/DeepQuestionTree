@@ -1,6 +1,6 @@
 # Developer Guide
 
-> Last Updated: 2026-04-09
+> Last Updated: 2026-05-04
 >
 > 本页唯一负责：面向开发者说明环境基线、目录职责、调试入口、变更同步点和文档维护规则。
 
@@ -68,10 +68,11 @@ npm run dev
 
 | Path | Responsibility |
 |---|---|
-| `src/backend/api/` | 路由、DTO、鉴权依赖 |
+| `src/backend/api/` | 路由、DTO、鉴权依赖、read-model 构建 |
 | `src/backend/services/` | 运行时门面、应用服务、协调器、串行 commit 通道、仓储边界 |
 | `src/backend/core/` | 领域对象、MCTS engine、snapshot/proposal 并发提交流程 |
-| `src/backend/modules/` | checker、questioner、compressor、pruner、integrator、persistence |
+| `src/backend/modules/` | checker、questioner、compressor、pruner、integrator；`persistence.py` 仅为旧导入兼容层 |
+| `src/backend/infrastructure/` | SQLite 会话库与报告缓存等基础设施 adapter |
 | `src/backend/llm/` | LLM client、基于 `purpose` 的 generation/decision 模型路由、prompt manager、mock client |
 | `config/` | 默认配置与 prompts |
 
@@ -121,8 +122,11 @@ npm run dev
 - 会话和报告缓存统一落在 `storage.session_db_path`
 - 默认 SQLite 文件路径是 `data/sessions/deepquestiontree.sqlite3`
 - [`.env.example`](../.env.example) 现在代表“真实 provider 优先”的样板；离线调试请改用 [`.env.mock.example`](../.env.mock.example)
-- 默认真实 provider 为 Deepseek，经由 OpenAI-compatible client 接入
-- 默认 `llm.generation_model=deepseek-chat`、`llm.decision_model=deepseek-reasoner`
+- 默认真实 provider 为 DeepSeek V4 Preview，经由 OpenAI-compatible client 接入
+- 默认 `llm.base_url=https://api.deepseek.com`
+- 默认 `llm.generation_model=deepseek-v4-pro`、`llm.decision_model=deepseek-v4-pro`
+- 默认 `llm.generation_thinking=false`、`llm.decision_thinking=true`、`llm.generation_reasoning_effort=high`、`llm.decision_reasoning_effort=high`
+- DeepSeek thinking 开关通过 `extra_body.thinking` 注入；`reasoning_effort` 仅在 thinking 开启时作为顶层请求参数注入
 - `RuntimeModuleFactory` 会在真实 provider 模式启动前预检 `llm.api_key`、`llm.base_url`、`llm.generation_model` 和 `llm.decision_model`
 - 新 token 账本字段 `llm_usage` 和 `token_accounting_version` 持久化在 session JSON 中；`sessions` 摘要表额外保留 `token_accounting_version` 供列表页判断 legacy gating
 
@@ -134,6 +138,8 @@ npm run dev
 
 - [`../src/backend/api/router.py`](../src/backend/api/router.py)
 - [`../src/backend/api/dto.py`](../src/backend/api/dto.py)
+- [`../src/backend/api/read_models.py`](../src/backend/api/read_models.py)
+- [`../src/frontend/lib/api-client.ts`](../src/frontend/lib/api-client.ts)
 - [`../src/frontend/lib/api.ts`](../src/frontend/lib/api.ts)
 - [`../src/frontend/lib/contracts.ts`](../src/frontend/lib/contracts.ts)
 - [`./application-layer-and-auth.md`](./application-layer-and-auth.md)
@@ -214,6 +220,12 @@ uv run python run_tests.py ci
 - `quality` 做 Python 格式、导入顺序和类型检查
 - `ci` 做项目级本地验收，并校验默认 `data/` 工作区不被测试污染
 - 并发 MCTS 回归位于 `tests/unit/test_mcts_concurrency.py` 与 `tests/integration/test_mcts_concurrency.py`
+
+真实 provider E2E 是下一阶段前的独立门禁，不纳入默认 `ci`。它只通过进程环境变量读取 API key，默认测试规模为 `E2E_MAX_SIMULATIONS=1`、`E2E_BRANCH_FACTOR=2`、`E2E_TIMEOUT_SECONDS=600`：
+
+```bash
+uv run pytest tests/e2e/ -v --run-e2e --e2e-provider deepseek
+```
 
 前端专属测试细节见 [`frontend-testing.md`](./frontend-testing.md)。
 

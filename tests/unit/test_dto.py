@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.backend.api.dto import build_session_read_model
+from src.backend.api.read_models import build_session_read_model
 from src.backend.core.schema import Node, QAInteraction, SessionData
 
 

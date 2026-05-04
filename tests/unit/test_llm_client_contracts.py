@@ -25,8 +25,14 @@ def _build_openai_client(fake_create):
             )
         )
     )
+    client.base_url = "https://api.deepseek.com"
     client.generation_model = "generation-model"
     client.decision_model = "decision-model"
+    client.enable_thinking_controls = False
+    client.generation_thinking = False
+    client.decision_thinking = True
+    client.generation_reasoning_effort = "high"
+    client.decision_reasoning_effort = "high"
     client.total_tokens_used = 0
     client.total_cost = 0.0
     client.request_count = 0
@@ -143,6 +149,11 @@ async def test_openai_client_emits_trace_logs_when_debug_logging_enabled(monkeyp
                 max_retries=0,
                 generation_model="generation-model",
                 decision_model="decision-model",
+                enable_thinking_controls=True,
+                generation_thinking=False,
+                decision_thinking=True,
+                generation_reasoning_effort="high",
+                decision_reasoning_effort="high",
             ),
             logging=SimpleNamespace(level="DEBUG"),
         ),
@@ -194,3 +205,54 @@ async def test_openai_client_records_usage_to_active_request_recorder():
     assert delta.total_tokens == 21
     assert delta.usage_by_model["generation-model"].calls == 1
     assert delta.usage_by_model["generation-model"].tokens == 21
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_deepseek_v4_generation_disables_thinking_by_default():
+    calls: list[dict] = []
+
+    async def fake_create(**kwargs):
+        calls.append(kwargs)
+        return _build_chat_response("plain response", tokens=21)
+
+    client = _build_openai_client(fake_create)
+    client.generation_model = "deepseek-v4-pro"
+    client.enable_thinking_controls = True
+    client.generation_thinking = False
+
+    await client.chat_completion(
+        messages=[{"role": "user", "content": "answer"}],
+        response_contract="text",
+        purpose="generation",
+    )
+
+    assert calls[0]["model"] == "deepseek-v4-pro"
+    assert calls[0]["extra_body"] == {"thinking": {"type": "disabled"}}
+    assert "reasoning_effort" not in calls[0]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_deepseek_v4_decision_enables_thinking_with_reasoning_effort():
+    calls: list[dict] = []
+
+    async def fake_create(**kwargs):
+        calls.append(kwargs)
+        return _build_chat_response('{"score": 8}', tokens=21)
+
+    client = _build_openai_client(fake_create)
+    client.decision_model = "deepseek-v4-pro"
+    client.enable_thinking_controls = True
+    client.decision_thinking = True
+    client.decision_reasoning_effort = "high"
+
+    await client.chat_completion(
+        messages=[{"role": "user", "content": "judge"}],
+        response_contract="json_object",
+        purpose="decision",
+    )
+
+    assert calls[0]["model"] == "deepseek-v4-pro"
+    assert calls[0]["extra_body"] == {"thinking": {"type": "enabled"}}
+    assert calls[0]["reasoning_effort"] == "high"

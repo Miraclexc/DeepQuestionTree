@@ -122,6 +122,19 @@ def test_run_ci_checks_uses_isolated_runtime_environment(monkeypatch, tmp_path):
     assert captured_frontend_envs[0]["STORAGE__LOGS_DIR"].endswith("logs")
 
 
+def test_run_unit_tests_runs_all_unit_tests(monkeypatch):
+    captured_args: list[list[str]] = []
+
+    def fake_run_pytest(args, env=None):
+        captured_args.append(args)
+        return 0
+
+    monkeypatch.setattr(run_tests, "run_pytest", fake_run_pytest)
+
+    assert run_tests.run_unit_tests() == 0
+    assert captured_args == [["tests/unit/", "-v"]]
+
+
 def test_build_frontend_e2e_environment_defaults_to_mock_backend(tmp_path):
     env = run_tests.build_frontend_e2e_environment(
         tmp_path / "frontend-runtime",
@@ -142,15 +155,19 @@ def test_build_frontend_e2e_environment_maps_deepseek_provider(tmp_path):
         base_env={
             "PATH": "test-path",
             "E2E_DEEPSEEK_API_KEY": "sk-deepseek",
+            "E2E_MAX_SIMULATIONS": "1",
+            "E2E_BRANCH_FACTOR": "2",
         },
     )
 
     assert env["PLAYWRIGHT_E2E_PROVIDER"] == "deepseek"
     assert env["PLAYWRIGHT_BACKEND_MOCK_LLM"] == "false"
     assert env["PLAYWRIGHT_E2E_DEEPSEEK_API_KEY"] == "sk-deepseek"
-    assert env["PLAYWRIGHT_E2E_DEEPSEEK_BASE_URL"] == "https://api.deepseek.com/v1"
-    assert env["PLAYWRIGHT_E2E_DEEPSEEK_GENERATION_MODEL"] == "deepseek-chat"
-    assert env["PLAYWRIGHT_E2E_DEEPSEEK_DECISION_MODEL"] == "deepseek-reasoner"
+    assert env["PLAYWRIGHT_E2E_DEEPSEEK_BASE_URL"] == "https://api.deepseek.com"
+    assert env["PLAYWRIGHT_E2E_DEEPSEEK_GENERATION_MODEL"] == "deepseek-v4-pro"
+    assert env["PLAYWRIGHT_E2E_DEEPSEEK_DECISION_MODEL"] == "deepseek-v4-pro"
+    assert env["PLAYWRIGHT_MCTS_MAX_SIMULATIONS"] == "1"
+    assert env["PLAYWRIGHT_MCTS_BRANCH_FACTOR"] == "2"
     assert "EMBEDDING__USE_LOCAL" not in env
     assert "EMBEDDING__LOCAL_FILES_ONLY" not in env
     assert "EMBEDDING__FALLBACK_MODE" not in env

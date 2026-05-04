@@ -1,6 +1,6 @@
 # DeepQuestionTree
 
-> Last Updated: 2026-04-08
+> Last Updated: 2026-05-04
 >
 > 本页唯一负责：作为项目入口页，提供最短启动路径，并把用户与开发者分流到各自文档。
 
@@ -53,13 +53,17 @@ copy .env.mock.example .env
 - `LLM__DECISION_MODEL`：唯一的核查模型，负责问题预审、低价值路径复核与事实合并判定
 - `CHECKER__*`：控制历史窗口、字面归一化短路和 fail-open 行为
 
-默认真实 provider 已收敛为 Deepseek，并通过 OpenAI-compatible client 接入：
+默认真实 provider 已收敛为 DeepSeek V4 Preview，并通过 OpenAI-compatible client 接入：
 
-- `LLM__BASE_URL=https://api.deepseek.com/v1`
-- `LLM__GENERATION_MODEL=deepseek-chat`
-- `LLM__DECISION_MODEL=deepseek-reasoner`
+- `LLM__BASE_URL=https://api.deepseek.com`
+- `LLM__GENERATION_MODEL=deepseek-v4-pro`
+- `LLM__DECISION_MODEL=deepseek-v4-pro`
+- `LLM__GENERATION_THINKING=false`
+- `LLM__DECISION_THINKING=true`
+- `LLM__GENERATION_REASONING_EFFORT=high`
+- `LLM__DECISION_REASONING_EFFORT=high`
 
-如果部署环境不支持 `deepseek-reasoner`，请直接覆盖 `LLM__DECISION_MODEL`；当前不会自动 fallback 到别的模型。
+`deepseek-chat` / `deepseek-reasoner` 是旧兼容别名，官方停用窗口为 2026-07-24；新部署请使用 `deepseek-v4-pro` 或按需覆盖为 `deepseek-v4-flash`。系统不会自动 fallback 到别的模型。DeepSeek thinking 开关通过 `extra_body.thinking` 发送；`reasoning_effort` 只在对应链路开启 thinking 时作为顶层请求参数发送。
 
 默认会话与报告持久化文件为：
 
@@ -74,6 +78,12 @@ NEXT_PUBLIC_API_TOKEN=dev-token
 ```
 
 真实 provider 模式现在会在启动前做配置预检；如果 `LLM__API_KEY`、`LLM__BASE_URL` 或模型名缺失，会直接返回 `configuration_error`，并提示切到 mock 配置，而不是等到运行中才模糊失败。
+
+真实 DeepSeek E2E 只通过进程环境变量读取测试 key，不把 key 写入仓库文件。默认 smoke 会把测试规模收敛到 `E2E_MAX_SIMULATIONS=1`、`E2E_BRANCH_FACTOR=2`、`E2E_TIMEOUT_SECONDS=600`，避免把慢速 provider 响应误判为系统不可用：
+
+```bash
+uv run pytest tests/e2e/ -v --run-e2e --e2e-provider deepseek
+```
 
 ### Start the App
 

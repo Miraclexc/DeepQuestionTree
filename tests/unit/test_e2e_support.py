@@ -17,6 +17,7 @@ def test_resolve_openai_compatible_provider_from_environment():
             "E2E_API_TOKEN": "token-123",
             "E2E_TIMEOUT_SECONDS": "75",
             "E2E_MAX_SIMULATIONS": "4",
+            "E2E_BRANCH_FACTOR": "3",
             "E2E_OPENAI_COMPATIBLE_API_KEY": "sk-openai-compatible",
             "E2E_OPENAI_COMPATIBLE_BASE_URL": "https://example.com/v1",
             "E2E_OPENAI_COMPATIBLE_GENERATION_MODEL": "provider-gen",
@@ -28,6 +29,7 @@ def test_resolve_openai_compatible_provider_from_environment():
     assert profile.api_token == "token-123"
     assert profile.timeout_seconds == 75
     assert profile.max_simulations == 4
+    assert profile.branch_factor == 3
     assert profile.api_key == "sk-openai-compatible"
     assert profile.base_url == "https://example.com/v1"
     assert profile.generation_model == "provider-gen"
@@ -45,12 +47,13 @@ def test_deepseek_profile_uses_default_values():
 
     assert profile.provider == "deepseek"
     assert profile.api_key == "sk-deepseek"
-    assert profile.base_url == "https://api.deepseek.com/v1"
-    assert profile.generation_model == "deepseek-chat"
-    assert profile.decision_model == "deepseek-reasoner"
+    assert profile.base_url == "https://api.deepseek.com"
+    assert profile.generation_model == "deepseek-v4-pro"
+    assert profile.decision_model == "deepseek-v4-pro"
     assert profile.api_token == "test-token"
-    assert profile.timeout_seconds == 180
-    assert profile.max_simulations == 2
+    assert profile.timeout_seconds == 600
+    assert profile.max_simulations == 1
+    assert profile.branch_factor == 2
 
 
 @pytest.mark.unit
@@ -89,3 +92,5 @@ def test_build_backend_environment_does_not_inject_legacy_provider_overrides():
     assert "EMBEDDING__USE_LOCAL" not in env
     assert "EMBEDDING__LOCAL_FILES_ONLY" not in env
     assert "EMBEDDING__FALLBACK_MODE" not in env
+    assert env["MCTS__MAX_SIMULATIONS"] == "1"
+    assert env["MCTS__BRANCH_FACTOR"] == "2"

@@ -194,9 +194,12 @@ def test_load_settings_uses_defaults_when_config_file_is_missing(monkeypatch, tm
     settings = load_settings("config/settings.yaml")
 
     assert settings.app.api_port == 8001
-    assert settings.llm.base_url == "https://api.deepseek.com/v1"
-    assert settings.llm.generation_model == "deepseek-chat"
-    assert settings.llm.decision_model == "deepseek-reasoner"
+    assert settings.llm.base_url == "https://api.deepseek.com"
+    assert settings.llm.generation_model == "deepseek-v4-pro"
+    assert settings.llm.decision_model == "deepseek-v4-pro"
+    assert settings.llm.generation_thinking is False
+    assert settings.llm.decision_thinking is True
+    assert settings.llm.decision_reasoning_effort == "high"
     assert settings.checker.question_history_window == 50
     assert settings.storage.sessions_dir == "data/sessions"
     assert settings.storage.session_db_path == "data/sessions/deepquestiontree.sqlite3"
@@ -229,17 +232,24 @@ def test_repository_real_provider_defaults_are_deepseek():
         Path("config/settings.yaml").read_text(encoding="utf-8")
     )
 
-    assert settings_payload["llm"]["base_url"] == "https://api.deepseek.com/v1"
-    assert settings_payload["llm"]["generation_model"] == "deepseek-chat"
-    assert settings_payload["llm"]["decision_model"] == "deepseek-reasoner"
+    assert settings_payload["llm"]["base_url"] == "https://api.deepseek.com"
+    assert settings_payload["llm"]["generation_model"] == "deepseek-v4-pro"
+    assert settings_payload["llm"]["decision_model"] == "deepseek-v4-pro"
+    assert settings_payload["llm"]["generation_thinking"] is False
+    assert settings_payload["llm"]["decision_thinking"] is True
+    assert settings_payload["llm"]["decision_reasoning_effort"] == "high"
 
 
 def test_env_example_real_provider_defaults_are_deepseek():
     env_example = Path(".env.example").read_text(encoding="utf-8")
 
-    assert "LLM__BASE_URL=https://api.deepseek.com/v1" in env_example
-    assert "LLM__GENERATION_MODEL=deepseek-chat" in env_example
-    assert "LLM__DECISION_MODEL=deepseek-reasoner" in env_example
+    assert "LLM__BASE_URL=https://api.deepseek.com" in env_example
+    assert "LLM__BASE_URL=https://api.deepseek.com" in env_example
+    assert "LLM__GENERATION_MODEL=deepseek-v4-pro" in env_example
+    assert "LLM__DECISION_MODEL=deepseek-v4-pro" in env_example
+    assert "LLM__GENERATION_THINKING=false" in env_example
+    assert "LLM__DECISION_THINKING=true" in env_example
+    assert "LLM__DECISION_REASONING_EFFORT=high" in env_example
 
 
 def test_session_manager_uses_environment_overridden_storage_paths(

@@ -4,10 +4,15 @@ app:
   env: "development"  # development / production
 
 llm:
-  generation_model: "deepseek-chat"  # 用于生成回答、摘要与报告的模型
-  decision_model: "deepseek-reasoner"  # 用于决策核查与结构化判定的模型
+  generation_model: "deepseek-v4-pro"  # 用于生成回答、摘要与报告的模型
+  decision_model: "deepseek-v4-pro"  # 用于决策核查与结构化判定的模型
   api_key: "${LLM__API_KEY}"  # 支持从环境变量读取
-  base_url: "https://api.deepseek.com/v1"
+  base_url: "https://api.deepseek.com"
+  enable_thinking_controls: true
+  generation_thinking: false
+  decision_thinking: true
+  generation_reasoning_effort: "high"
+  decision_reasoning_effort: "high"
   timeout: 60
   max_retries: 3
 

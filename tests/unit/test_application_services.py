@@ -123,7 +123,9 @@ class FakeCoordinator:
         self.reconfigured_with = modules
         self.integrator = modules.integrator
 
-    async def merge_report_usage(self, *, session_id: str, usage_delta) -> SessionData | None:
+    async def merge_report_usage(
+        self, *, session_id: str, usage_delta
+    ) -> SessionData | None:
         if self.active_session is None or self.active_session.session_id != session_id:
             return None
         self.active_session.merge_llm_usage(usage_delta)
@@ -532,7 +534,9 @@ class TestReportService:
         assert repository.reports[session.session_id]["source_session_version"] == 5
         assert integrator.calls == 1
 
-    async def test_report_service_records_report_generation_usage_in_session_ledger(self):
+    async def test_report_service_records_report_generation_usage_in_session_ledger(
+        self,
+    ):
         session = SessionData(global_goal="统计报告 token")
         session.add_node(
             Node(

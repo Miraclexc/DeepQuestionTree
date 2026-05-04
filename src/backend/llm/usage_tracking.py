@@ -40,7 +40,9 @@ def get_active_usage_recorder() -> LlmUsageRecorder | None:
     return _active_usage_recorder.get()
 
 
-def record_usage_for_current_request(model: str, tokens: int, *, calls: int = 1) -> None:
+def record_usage_for_current_request(
+    model: str, tokens: int, *, calls: int = 1
+) -> None:
     """向当前请求上下文中的 recorder 追加使用统计。"""
     recorder = get_active_usage_recorder()
     if recorder is None:

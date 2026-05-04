@@ -9,44 +9,17 @@ import asyncio
 import inspect
 import math
 import uuid
-from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional
 
 from ..config_loader import get_settings
 from ..llm.usage_tracking import LlmUsageRecorder, bind_usage_recorder
 from ..utils.logger import get_logger
-from .schema import Fact, Node, QAInteraction, SessionData, SessionLlmUsage
+from .mcts_types import CommitResult, SessionSnapshot, StepProposal
+from .schema import Node, QAInteraction, SessionData, SessionLlmUsage
+from .tree_utils import get_path_facts, get_path_node_ids, normalize_question_text
 
 logger = get_logger(__name__)
-
-
-@dataclass(frozen=True, slots=True)
-class SessionSnapshot:
-    session_revision: int
-    leaf_node_id: str
-    reservation_token: str
-    session: SessionData
-
-
-@dataclass(slots=True)
-class StepProposal:
-    session_revision: int
-    leaf_node_id: str
-    reservation_token: str
-    updated_nodes: dict[str, Node]
-    created_nodes: list[Node]
-    global_facts: list[Fact]
-    llm_usage_delta: SessionLlmUsage
-    new_node_id: str | None
-    simulation_applied: bool
-
-
-@dataclass(frozen=True, slots=True)
-class CommitResult:
-    committed: bool
-    reason: str | None = None
-    new_node_id: str | None = None
 
 
 class MCTSEngine:
@@ -415,7 +388,7 @@ class MCTSEngine:
             )
             return []
 
-        path_facts = self._get_path_facts(session, parent_node)
+        path_facts = get_path_facts(session, parent_node)
         questions = await self.questioner.generate_candidates(
             context_facts=path_facts,
             current_answer=current_answer,
@@ -425,14 +398,17 @@ class MCTSEngine:
         )
 
         normalized_history = {
-            self._normalize_question_text(node.interaction.question)
+            normalize_question_text(node.interaction.question, self._text_normalizer())
             for node in session.nodes.values()
             if node.interaction and node.interaction.question
         }
         seen_candidates: set[str] = set()
         new_ids: list[str] = []
         for question_text in questions:
-            normalized_question = self._normalize_question_text(question_text)
+            normalized_question = normalize_question_text(
+                question_text,
+                self._text_normalizer(),
+            )
             if not normalized_question:
                 continue
             if (
@@ -643,23 +619,6 @@ class MCTSEngine:
 
         return stats
 
-    def _get_path_facts(self, session: SessionData, node: Node) -> List[Fact]:
-        """
-        获取从根节点到当前节点路径上的所有事实
-        """
-        facts: list[Fact] = []
-        current: Node | None = node
-        while current:
-            facts.extend(current.new_facts)
-
-            if current.parent_id and current.parent_id in session.nodes:
-                current = session.nodes[current.parent_id]
-            else:
-                current = None
-
-        unique_facts = {fact.id: fact for fact in facts}
-        return list(unique_facts.values())
-
     def _build_proposal(
         self,
         *,
@@ -681,7 +640,7 @@ class MCTSEngine:
         created_ids = set(created_node_ids)
         updated_node_ids = [
             node_id
-            for node_id in self._get_path_node_ids(session, backprop_start_id)
+            for node_id in get_path_node_ids(session, backprop_start_id)
             if node_id not in created_ids
         ]
 
@@ -704,18 +663,6 @@ class MCTSEngine:
             new_node_id=new_node_id,
             simulation_applied=simulation_applied,
         )
-
-    def _get_path_node_ids(self, session: SessionData, node_id: str) -> list[str]:
-        """获取从当前节点到根节点的所有节点 ID。"""
-        path: list[str] = []
-        current_id: str | None = node_id
-        while current_id:
-            path.append(current_id)
-            current_node = session.nodes.get(current_id)
-            if current_node is None:
-                break
-            current_id = current_node.parent_id
-        return path
 
     def _apply_existing_node_update(
         self,
@@ -765,14 +712,11 @@ class MCTSEngine:
             return await should_prune(node, session, phase=phase)
         return await should_prune(node, session)
 
-    def _normalize_question_text(self, question: str) -> str:
-        normalized = question.strip()
+    def _text_normalizer(self):
         checker = getattr(self.pruner, "checker", None)
         if checker is None:
             checker = getattr(self.questioner, "checker", None)
-        if checker is not None and hasattr(checker, "normalize_text"):
-            return checker.normalize_text(normalized)
-        return " ".join(normalized.lower().split())
+        return checker
 
     async def _mark_pruned_node(
         self,

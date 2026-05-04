@@ -1,6 +1,6 @@
 # Testing And E2E
 
-> Last Updated: 2026-04-08
+> Last Updated: 2026-05-04
 >
 > 本页唯一负责：维护项目级测试总览、`run_tests.py` 语义、本地验收约束、真实 provider E2E 与手动验收主流程。
 
@@ -49,26 +49,26 @@ uv run python run_tests.py all
 真实 provider E2E：
 
 ```bash
-uv run pytest tests/e2e/ -v --run-e2e --e2e-provider openai-compatible
+uv run pytest tests/e2e/ -v --run-e2e --e2e-provider deepseek
 ```
 
 真实 provider contract smoke：
 
 ```bash
-uv run pytest tests/e2e/test_provider_contracts.py -v --run-e2e --e2e-provider openai-compatible
+uv run pytest tests/e2e/test_provider_contracts.py -v --run-e2e --e2e-provider deepseek
 ```
 
-本次 checker 改造后的推荐验收顺序固定为：
+Checker 相关改造后的推荐验收顺序固定为：
 
 ```bash
 uv run pytest tests/unit -v
-uv run pytest tests/integration -v
+uv run pytest tests/integration/ -v -m integration
 uv run pytest tests/ -v
 uv run python run_tests.py quality
 uv run python run_tests.py ci
 ```
 
-本轮会话语义 / revision 优化后的最小回归切片建议补充为：
+会话语义 / revision 优化后的最小回归切片建议补充为：
 
 ```bash
 uv run pytest tests/unit/test_application_services.py tests/unit/test_mcts_concurrency.py tests/integration/test_session_api.py tests/integration/test_mcts_flow.py tests/integration/test_persistence.py -q
@@ -90,6 +90,8 @@ cd src/frontend && npm run test -- --run ../../tests/frontend/lib/contracts.test
 | `quality` | 执行 `black --check`、`isort --check-only`、`mypy src/backend` |
 | `ci` | 先跑 `quality`，再跑后端验收和前端 `npm run test:ci`，并检查默认 `data/` 目录不被污染 |
 | `all` | 跑 `pytest tests/ -v`，然后跑前端 `npm run test:ci` |
+| `unit` | 跑全部 `tests/unit/ -v`；不再依赖 `unit` marker，避免漏收未打标单测 |
+| `integration` | 跑 `pytest tests/integration/ -v -m integration` |
 | `frontend` | 跑前端 Vitest 和构建 |
 | `frontend-e2e` | 跑前端 Playwright smoke |
 | `frontend-coverage` | 跑前端覆盖率 |
@@ -165,9 +167,14 @@ uv run python -m src.backend.main
 
 默认值：
 
-- `base_url=https://api.deepseek.com/v1`
-- `generation_model=deepseek-chat`
-- `decision_model=deepseek-reasoner`
+- `base_url=https://api.deepseek.com`
+- `generation_model=deepseek-v4-pro`
+- `decision_model=deepseek-v4-pro`
+
+Secret 传入约束：
+
+- `E2E_DEEPSEEK_API_KEY` 只通过当前进程环境变量传入
+- 不要把真实 key 写入 `.env`、文档、测试文件或命令历史脚本
 
 #### `openai-compatible`
 
@@ -184,8 +191,11 @@ uv run python -m src.backend.main
 |---|---|---|
 | `E2E_PROVIDER` | 当未传 `--e2e-provider` 时的 provider 选择 | 无 |
 | `E2E_API_TOKEN` | 注入给后端 Bearer 鉴权的测试 token | `test-token` |
-| `E2E_TIMEOUT_SECONDS` | 服务可用与会话完成超时 | `180` |
-| `E2E_MAX_SIMULATIONS` | 控制 smoke 成本的最大模拟次数 | `2` |
+| `E2E_TIMEOUT_SECONDS` | 服务可用与会话完成超时；真实 DeepSeek 默认允许慢速响应 | `600` |
+| `E2E_MAX_SIMULATIONS` | 控制 smoke 成本的最大模拟次数；默认只验证一轮完整链路 | `1` |
+| `E2E_BRANCH_FACTOR` | 注入 `MCTS__BRANCH_FACTOR`，控制真实 smoke 的候选问题规模 | `2` |
+
+这些默认值只属于真实 E2E harness，不改变 [`../config/settings.yaml`](../config/settings.yaml) 中本地运行和产品原型的 MCTS 默认配置。
 
 ## 6. Manual Prototype Acceptance
 
@@ -217,3 +227,4 @@ uv run python -m src.backend.main
 - 前端浏览器链路由 [`frontend-testing.md`](./frontend-testing.md) 维护
 - provider 抽象只存在于测试层，不改业务 DTO
 - E2E/本地验收只使用 `LLM__*` 真实 provider 配置，不引入额外 provider alias
+- 真实 provider smoke 的默认目标是验证端到端可用性，不做高成本探索质量评估

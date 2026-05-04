@@ -1,6 +1,6 @@
 # DeepQuestionTree Project Overview
 
-> Last Updated: 2026-04-09
+> Last Updated: 2026-05-04
 >
 > 本页唯一负责：记录当前代码已经落地的真实架构、运行时约束、配置边界、数据流与已知原型边界。
 
@@ -32,7 +32,7 @@ Backend (FastAPI app factory)
    ├─ services/coordinator.py
    ├─ core/mcts_engine.py
    ├─ modules/*
-   └─ modules/persistence.py
+   └─ infrastructure/session_store.py
         ↓
    data/sessions/deepquestiontree.sqlite3
 ```
@@ -42,14 +42,15 @@ Backend (FastAPI app factory)
 | Module | Responsibility | Key Files |
 |---|---|---|
 | App entry | 创建 FastAPI app、挂载 runtime、注册 middleware 与异常处理 | `src/backend/main.py` |
-| API layer | 路由、鉴权依赖、DTO / read-model | `src/backend/api/*` |
+| API layer | 路由、鉴权依赖、DTO 与 read-model 组装 | `src/backend/api/*` |
 | Runtime facade | 向 FastAPI 暴露命令、查询、报告与配置重载能力 | `src/backend/services/runtime.py` |
 | Application services | Command / Query / Report / Configuration 服务拆分 | `src/backend/services/*_service.py` |
 | Runtime coordinator | 管理单活跃会话、MCTS engine 与后台任务生命周期 | `src/backend/services/coordinator.py` |
-| Repository boundary | 将 `SessionManager` 包装成显式应用层仓储 | `src/backend/services/session_repository.py` |
+| Repository boundary | 将 SQLite `SessionManager` 包装成显式应用层仓储 | `src/backend/services/session_repository.py` |
 | Core | 领域对象与 MCTS engine | `src/backend/core/*` |
-| Domain modules | checker、questioner、compressor、pruner、integrator、persistence | `src/backend/modules/*` |
-| LLM / checker | OpenAI-compatible client（默认真实 provider 为 Deepseek）、mock client、基于 `purpose` 的模型路由、结构化输出契约 | `src/backend/llm/*` |
+| Domain modules | checker、questioner、compressor、pruner、integrator | `src/backend/modules/*` |
+| Infrastructure | SQLite 会话库与报告缓存 adapter；`modules/persistence.py` 仅保留兼容导入 | `src/backend/infrastructure/session_store.py` |
+| LLM / checker | OpenAI-compatible client（默认真实 provider 为 DeepSeek V4 Preview）、mock client、基于 `purpose` 的模型路由、结构化输出契约 | `src/backend/llm/*` |
 
 ### 2.2 Frontend modules
 
@@ -103,8 +104,9 @@ Backend (FastAPI app factory)
 
 持久化分两层：
 
-- `SessionManager` 负责底层 SQLite 表读写与报告缓存
+- `SessionManager` 位于 `src/backend/infrastructure/session_store.py`，负责底层 SQLite 表读写与报告缓存
 - `SqliteSessionRepository` 负责向上提供显式应用层结果和异常
+- `src/backend/modules/persistence.py` 只作为旧导入兼容层保留，不再承载真实实现
 
 当前仓储接口约束：
 
@@ -132,9 +134,11 @@ Backend (FastAPI app factory)
 - 后端不读取 `src/frontend/.env.local`
 - 前端只读取自己的 `NEXT_PUBLIC_*`
 - 默认样板保持真实 provider 优先；离线 mock 另见根目录 `.env.mock.example`
-- 默认真实 provider 为 Deepseek，仍只通过 `LLM__*` 配置覆盖
-- 默认 `LLM__GENERATION_MODEL=deepseek-chat`、`LLM__DECISION_MODEL=deepseek-reasoner`
-- 若部署不兼容 `deepseek-reasoner`，需手工覆盖 `LLM__DECISION_MODEL`，当前不做自动 fallback
+- 默认真实 provider 为 DeepSeek V4 Preview，仍只通过 `LLM__*` 配置覆盖
+- 默认 `LLM__BASE_URL=https://api.deepseek.com`
+- 默认 `LLM__GENERATION_MODEL=deepseek-v4-pro`、`LLM__DECISION_MODEL=deepseek-v4-pro`
+- 默认 generation 链路发送 `extra_body={"thinking":{"type":"disabled"}}`；decision 链路发送 `extra_body={"thinking":{"type":"enabled"}}` 并使用顶层 `reasoning_effort="high"`
+- `deepseek-chat` / `deepseek-reasoner` 是旧兼容别名，官方停用窗口为 2026-07-24；系统不会自动 fallback 到别的模型
 
 典型来源：
 
@@ -157,7 +161,7 @@ Backend (FastAPI app factory)
 当前真实边界：
 
 - `chat_completion(..., purpose="generation" | "decision")` 显式声明调用目的；
-- `purpose="decision"` 固定走 `llm.decision_model`；
+- `purpose="decision"` 固定走 `llm.decision_model`，并按 `llm.decision_thinking` 控制 DeepSeek thinking 开关，按顶层 `llm.decision_reasoning_effort` 控制推理强度；
 - `json_object` 通过 OpenAI-compatible `response_format={"type":"json_object"}` 约束；
 - `json_array` 不依赖 provider 的对象模式，而是由 Prompt 明确数组格式，再由客户端校验顶层必须是数组；
 - 业务模块只消费解析后的结构化载荷，不再在多个模块里重复 `json.loads()`。
@@ -178,10 +182,10 @@ Backend (FastAPI app factory)
 
 当前统一 API 面只有一套 `/api/*` 路由。
 
-当前前端消费的不是领域对象本身，而是 DTO 层构建的 read-model：
+当前前端消费的不是领域对象本身，而是 API 层构建的 read-model：
 
-- 节点答案展示通过 `parse_display_answer()` 做输出归一化
-- 报告响应通过 `build_report_response()` 保持稳定结构
+- `src/backend/api/dto.py` 只定义公开请求/响应模型
+- `src/backend/api/read_models.py` 负责 `parse_display_answer()`、树/节点/session read-model 与 `build_report_response()` 归一化
 - `pruned_insights` 作为独立诊断视图字段保留，但不进入报告正文 prompt，也不混入 `full_report` / `executive_summary`
 
 这使后端内部字段调整不会直接打爆前端展示层。
@@ -226,7 +230,7 @@ Backend (FastAPI app factory)
 - 不引入外部数据库服务
 - 不引入实时推送
 - 仍然采用轮询式工作台
-- 默认真实 provider 为 Deepseek；其他 OpenAI-compatible 部署仍通过 `LLM__*` 手工覆盖
+- 默认真实 provider 为 DeepSeek V4 Preview；其他 OpenAI-compatible 部署仍通过 `LLM__*` 手工覆盖
 - 浏览器 smoke 覆盖创建、停止/报告、恢复和继续工作台的主干链路，但不做视觉回归和多浏览器矩阵
 
 ## 8. Related Documents
