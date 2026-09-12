@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from jinja2 import TemplateError
 
-from src.backend.llm.prompt_manager import PromptManager
+from project.dqt.llm.prompt_manager import PromptManager
 
 ACTIVE_PROMPT_FIXTURES: dict[str, dict[str, object]] = {
     "generate_questions": {

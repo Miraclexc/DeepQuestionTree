@@ -1,230 +1,30 @@
-# Testing And E2E
+# 测试与验收
 
-> Last Updated: 2026-05-04
->
-> 本页唯一负责：维护项目级测试总览、`run_tests.py` 语义、本地验收约束、真实 provider E2E 与手动验收主流程。
+> Last Updated: 2026-09-12
 
-前端测试的 Vitest / MSW / Playwright 细节不在本页维护，统一见 [`frontend-testing.md`](./frontend-testing.md)。
+## 命令
 
-## 1. Test Layers
-
-当前测试分为七层：
-
-| Layer | Location | Default Behavior |
-|---|---|---|
-| Quality | `black / isort / mypy` | 默认纳入 `run_tests.py quality` 与 `run_tests.py ci` |
-| Unit | `tests/unit/` | 默认执行 |
-| Offline contract | `tests/unit/test_llm_client_contracts.py` | 默认执行，验证 `text` / `json_object` / `json_array` 契约 |
-| Integration | `tests/integration/` | 默认执行，包含并发 MCTS 回归 |
-| Backend acceptance | `pytest tests/ -v --cov-fail-under=80` | 默认纳入 `run_tests.py ci` |
-| Real API E2E | `tests/e2e/` | 默认不收集，必须显式开启 |
-| Frontend acceptance | `cd src/frontend && npm run test:ci` | 默认纳入 `run_tests.py ci` |
-
-## 2. Canonical Commands
-
-日常质量门禁：
-
-```bash
-uv run python run_tests.py quality
-```
-
-项目级本地验收（命令名保留为 `ci`）：
-
-```bash
-uv run python run_tests.py ci
-```
-
-后端验收：
-
-```bash
-uv run pytest tests/ -v --cov-fail-under=80
-```
-
-项目级完整回归：
-
-```bash
-uv run python run_tests.py all
-```
-
-真实 provider E2E：
-
-```bash
-uv run pytest tests/e2e/ -v --run-e2e --e2e-provider deepseek
-```
-
-真实 provider contract smoke：
-
-```bash
-uv run pytest tests/e2e/test_provider_contracts.py -v --run-e2e --e2e-provider deepseek
-```
-
-Checker 相关改造后的推荐验收顺序固定为：
-
-```bash
-uv run pytest tests/unit -v
-uv run pytest tests/integration/ -v -m integration
-uv run pytest tests/ -v
-uv run python run_tests.py quality
-uv run python run_tests.py ci
-```
-
-会话语义 / revision 优化后的最小回归切片建议补充为：
-
-```bash
-uv run pytest tests/unit/test_application_services.py tests/unit/test_mcts_concurrency.py tests/integration/test_session_api.py tests/integration/test_mcts_flow.py tests/integration/test_persistence.py -q
-cd src/frontend && npm run test -- --run ../../tests/frontend/lib/contracts.test.ts ../../tests/frontend/hooks/useDeepQuestionTree.test.ts ../../tests/frontend/components/TreeCanvas.test.tsx
-```
-
-说明：
-
-- `uv run pytest tests/ -v` 只覆盖 Python 测试，不执行前端 `.ts/.tsx`
-- `run_tests.py all` 会跑后端 pytest 和前端 `npm run test:ci`
-- 并发提交流程的后端回归位于 `tests/unit/test_mcts_concurrency.py` 与 `tests/integration/test_mcts_concurrency.py`
-
-## 3. `run_tests.py` Semantics
-
-[`../run_tests.py`](../run_tests.py) 当前命令语义如下：
-
-| Command | Behavior |
+| 命令 | 范围 |
 |---|---|
-| `quality` | 执行 `black --check`、`isort --check-only`、`mypy src/backend` |
-| `ci` | 先跑 `quality`，再跑后端验收和前端 `npm run test:ci`，并检查默认 `data/` 目录不被污染 |
-| `all` | 跑 `pytest tests/ -v`，然后跑前端 `npm run test:ci` |
-| `unit` | 跑全部 `tests/unit/ -v`；不再依赖 `unit` marker，避免漏收未打标单测 |
-| `integration` | 跑 `pytest tests/integration/ -v -m integration` |
-| `frontend` | 跑前端 Vitest 和构建 |
-| `frontend-e2e` | 跑前端 Playwright smoke |
-| `frontend-coverage` | 跑前端覆盖率 |
-| `e2e [provider]` | 跑真实 provider E2E |
+| `uv run pytest tests/ -v` | 全部离线 Python 测试，默认不收集真实 E2E |
+| `uv run python run_tests.py quality` | black、isort、原算法 mypy |
+| `uv run python run_tests.py ci` | quality 后执行全部离线测试 |
+| `uv run python run_tests.py unit` | 单元测试 |
+| `uv run python run_tests.py integration` | 集成测试，包含模板缓存/统计/调度回归 |
+| `uv run python run_tests.py e2e` | 真实 Flash CLI 完整流程 |
+| `uv run pytest tests/e2e/ -v --run-e2e` | 显式真实 E2E 的 pytest 入口 |
 
-## 4. Local Acceptance Constraints
+已移除前端与 HTTP API 测试命令及相应依赖。`run_tests.py all` 仅执行科研 Python 测试。
 
-仓库已移除 GitHub Actions CI 工作流；当前仍保留一套项目级本地验收入口与约束：
+## 验证层次
 
-- `Python 3.12`
-- `Node 20`
+- 原算法回归：UCT、节点与事实、提问、checker、压缩、剪枝、整合、结构化输出及并发提交。
+- 模板回归：DAG 原子失败恢复、复用/强制执行、统计单位去重、开发集候选选择、报告独立失效、导出、归档、Slurm 脚本与 worker/finalize 契约。
+- 项目集成：用原 mock provider 驱动真实 MCTS 子进程，验证树与轨迹、跨进程状态隔离、预算、隐藏答案隔离，以及仅参考答案/评分/报告变化时复用模型执行。
+- 真实 E2E：调用安装的 paper 命令执行 validate → plan → run → 缓存复用 → CSV export → archive，所有模型请求均为真实 deepseek-flash。
 
-当前本地验收阻塞项：
+真实 E2E 使用项目 `.env` 或进程中的 `LLM__API_KEY`，缺凭据时失败，不会把缺配置或 mock 结果算作真实验收。固定规模为一个问题、一次重复、一个搜索步骤，600 秒/30,000 tokens 上限。
 
-- `uv run python run_tests.py quality`
-- `uv run python run_tests.py ci`
+真实模型可能触发原有事实饱和剪枝，单根树也可能是合法结果。验收要求有回答、模型消耗、可恢复树与完整归档；单根树必须记录明确剪枝原因。分支展开逻辑由离线集成测试独立覆盖。
 
-`run_tests.py ci` 会在执行前后快照以下目录：
-
-- `data/sessions`
-- `data/logs`
-
-如果发现新增或删除运行产物，本地验收直接失败。
-
-本地验收与 pytest 隔离运行时会显式重定向：
-
-- `STORAGE__SESSIONS_DIR`
-- `STORAGE__SESSION_DB_PATH`
-- `STORAGE__LOGS_DIR`
-
-## 5. Real Provider E2E
-
-### 5.1 Execution model
-
-真实 API E2E 位于 `tests/e2e/`，不使用进程内 `ASGITransport`。它会：
-
-1. 为每次测试分配独立临时数据目录
-2. 动态选择空闲端口
-3. 通过真实入口启动后端进程：
-
-```bash
-uv run python -m src.backend.main
-```
-
-4. 通过 HTTP 调用：
-   - `/api/status`
-   - `/api/start`
-   - `/api/sessions/{session_id}`
-   - `/api/sessions/{session_id}/tree`
-   - `/api/sessions/{session_id}/report`
-5. 等待探索完成并校验 SQLite 会话库中存在对应会话记录
-
-此外，`tests/e2e/test_provider_contracts.py` 会直接调用真实 provider，验证：
-
-- `json_object` 契约可以返回可解析对象
-- `json_array` 契约可以返回可解析数组
-
-### 5.2 Supported providers
-
-当前支持两类 provider profile：
-
-#### `deepseek`
-
-必填环境变量：
-
-- `E2E_DEEPSEEK_API_KEY`
-
-可选环境变量：
-
-- `E2E_DEEPSEEK_BASE_URL`
-- `E2E_DEEPSEEK_GENERATION_MODEL`
-- `E2E_DEEPSEEK_DECISION_MODEL`
-
-默认值：
-
-- `base_url=https://api.deepseek.com`
-- `generation_model=deepseek-v4-pro`
-- `decision_model=deepseek-v4-pro`
-
-Secret 传入约束：
-
-- `E2E_DEEPSEEK_API_KEY` 只通过当前进程环境变量传入
-- 不要把真实 key 写入 `.env`、文档、测试文件或命令历史脚本
-
-#### `openai-compatible`
-
-必填环境变量：
-
-- `E2E_OPENAI_COMPATIBLE_API_KEY`
-- `E2E_OPENAI_COMPATIBLE_BASE_URL`
-- `E2E_OPENAI_COMPATIBLE_GENERATION_MODEL`
-- `E2E_OPENAI_COMPATIBLE_DECISION_MODEL`
-
-### 5.3 Shared E2E environment variables
-
-| Variable | Purpose | Default |
-|---|---|---|
-| `E2E_PROVIDER` | 当未传 `--e2e-provider` 时的 provider 选择 | 无 |
-| `E2E_API_TOKEN` | 注入给后端 Bearer 鉴权的测试 token | `test-token` |
-| `E2E_TIMEOUT_SECONDS` | 服务可用与会话完成超时；真实 DeepSeek 默认允许慢速响应 | `600` |
-| `E2E_MAX_SIMULATIONS` | 控制 smoke 成本的最大模拟次数；默认只验证一轮完整链路 | `1` |
-| `E2E_BRANCH_FACTOR` | 注入 `MCTS__BRANCH_FACTOR`，控制真实 smoke 的候选问题规模 | `2` |
-
-这些默认值只属于真实 E2E harness，不改变 [`../config/settings.yaml`](../config/settings.yaml) 中本地运行和产品原型的 MCTS 默认配置。
-
-## 6. Manual Prototype Acceptance
-
-单用户原型手动验收固定走一条主干：
-
-1. 启动后端和前端
-2. 设置 Bearer Token
-3. 创建新会话
-4. 等待树渲染
-5. 点击节点打开 `Node Details`
-6. 点击 `Stop & Report` 并确认报告打开
-7. 关闭报告后，在 `History` 中点击 `Resume Session`
-8. 删除会话，确认对应会话记录与报告缓存被移除
-
-通过标准：
-
-- UI 主闭环正常
-- SQLite 会话库写入当前配置的 `STORAGE__SESSION_DB_PATH`
-- 删除后对应 session/report 记录确实从 SQLite 会话库中清理
-- 默认 `data/sessions`、`data/logs` 不被测试命令污染
-- 真实 provider 缺配置时立即返回清晰的 `configuration_error`
-- 致命 worker / engine 异常会把会话置为 `error`，并在 `/api/status` 中暴露错误消息
-- 前端长时间停留在同一会话时，树接口只在 `session_revision` 变化时重新请求
-
-## 7. Current Boundaries
-
-- 后端真实 E2E 只覆盖独立进程 HTTP API
-- 默认本地验收通过离线契约单测覆盖结构化输出接口，但不直连真实 provider
-- 前端浏览器链路由 [`frontend-testing.md`](./frontend-testing.md) 维护
-- provider 抽象只存在于测试层，不改业务 DTO
-- E2E/本地验收只使用 `LLM__*` 真实 provider 配置，不引入额外 provider alias
-- 真实 provider smoke 的默认目标是验证端到端可用性，不做高成本探索质量评估
+测试产物写入 pytest 临时目录，算法日志也重定向到临时目录。默认覆盖率针对 src/project；真实子进程不受默认覆盖率采集，不将该数字作为端到端覆盖率。

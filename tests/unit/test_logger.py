@@ -4,12 +4,12 @@ import logging
 import logging.handlers
 from types import SimpleNamespace
 
-from src.backend.utils.logger import setup_logging
+from project.dqt.utils.logger import setup_logging
 
 
 def test_setup_logging_uses_timed_rotation_handler_for_daily(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "src.backend.utils.logger.get_settings",
+        "project.dqt.utils.logger.get_settings",
         lambda: SimpleNamespace(
             logging=SimpleNamespace(
                 level="INFO",

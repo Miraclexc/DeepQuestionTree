@@ -1,45 +1,21 @@
-app:
-  debug: true
-  mock_llm: false  # 是否使用假 LLM
-  env: "development"  # development / production
-
 llm:
-  generation_model: "deepseek-v4-pro"  # 用于生成回答、摘要与报告的模型
-  decision_model: "deepseek-v4-pro"  # 用于决策核查与结构化判定的模型
-  api_key: "${LLM__API_KEY}"  # 支持从环境变量读取
-  base_url: "https://api.deepseek.com"
+  generation_model: deepseek-flash
+  decision_model: deepseek-flash
+  base_url: https://api.deepseek.com
   enable_thinking_controls: true
   generation_thinking: false
   decision_thinking: true
-  generation_reasoning_effort: "high"
-  decision_reasoning_effort: "high"
-  timeout: 60
-  max_retries: 3
-
+  generation_reasoning_effort: high
+  decision_reasoning_effort: high
+  timeout: 120
+  max_retries: 0
 mcts:
-  max_depth: 10          # 最大提问深度
-  branch_factor: 5      # 每次生成多少个候选问题 (k)
-  max_simulations: 20   # 总模拟次数 (N)
-  exploration_constant: 1.414  # UCT 公式中的 C 值
-  save_interval_steps: 5       # 每运行几步自动保存一次
-  parallel_workers: 3          # 并行提问/模拟的 worker 数量
-
+  max_depth: 10
+  branch_factor: 5
+  max_simulations: 20
+  exploration_constant: 1.414
+  parallel_workers: 1
 checker:
-  question_history_window: 50   # 核查时最多带入多少条历史问题
-  literal_normalization: true   # 先做零成本字面归一化短路
-  fail_open: true               # 核查模型异常时保留问题/事实
-
-storage:
-  data_dir: "data"
-  sessions_dir: "data/sessions"
-  session_db_path: "data/sessions/deepquestiontree.sqlite3"
-  logs_dir: "data/logs"
-
-logging:
-  level: "INFO"  # DEBUG / INFO / WARNING / ERROR
-  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-  file_rotation: "daily"
-  json_format: false # 是否使用 JSON 格式输出日志（便于机器解析）
-
-security:
-  api_token: "dev-token"  # 开发态静态 Bearer Token，生产环境请改为环境变量覆盖
+  question_history_window: 50
+  literal_normalization: true
+  fail_open: true

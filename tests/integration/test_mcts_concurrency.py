@@ -4,8 +4,8 @@ import asyncio
 
 import pytest
 
-from src.backend.core.mcts_engine import MCTSEngine
-from src.backend.core.schema import Fact, Node, QAInteraction, SessionData
+from project.dqt.core.mcts_engine import MCTSEngine
+from project.dqt.core.schema import Fact, Node, QAInteraction, SessionData
 from tests.unit.test_mcts_concurrency import (
     BarrierQuestioner,
     DeterministicCompressor,

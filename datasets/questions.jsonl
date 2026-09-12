@@ -1,0 +1,3 @@
+{"id":"dev-1","input":"如何在有限计算预算下平衡搜索树的探索与利用？","split":"dev","reference":null,"metadata":{"purpose":"migration-example"}}
+{"id":"test-1","input":"如何设计可审计的多步骤问题求解系统，并衡量正确性与调用成本？","split":"test","reference":null,"metadata":{"purpose":"migration-example"}}
+{"id":"test-2","input":"复杂问题的搜索树出现重复分支和错误前提时，应该如何处理？","split":"test","reference":null,"metadata":{"purpose":"migration-example"}}

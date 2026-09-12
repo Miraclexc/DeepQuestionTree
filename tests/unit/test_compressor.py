@@ -7,8 +7,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.backend.core.schema import Fact
-from src.backend.modules.compressor import Compressor
+from project.dqt.core.schema import Fact
+from project.dqt.modules.compressor import Compressor
 
 
 class ContractAwareCompressorLLM:
@@ -214,7 +214,7 @@ class TestCompressor:
         assert not any("我认为" in fact.content for fact in facts)
 
     async def test_summarize_interactions(self, compressor):
-        from src.backend.core.schema import QAInteraction
+        from project.dqt.core.schema import QAInteraction
 
         interactions = [
             QAInteraction(

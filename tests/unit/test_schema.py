@@ -9,7 +9,7 @@ from datetime import datetime
 
 import pytest
 
-from src.backend.core.schema import (
+from project.dqt.core.schema import (
     Fact,
     LlmUsageStats,
     Node,

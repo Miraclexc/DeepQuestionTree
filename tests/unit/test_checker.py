@@ -2,8 +2,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.backend.core.schema import Fact
-from src.backend.modules.checker import Checker
+from project.dqt.core.schema import Fact
+from project.dqt.modules.checker import Checker
 
 
 class RecordingCheckerLLM:

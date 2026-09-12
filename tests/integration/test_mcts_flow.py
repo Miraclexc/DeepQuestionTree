@@ -7,12 +7,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.backend.core.mcts_engine import MCTSEngine
-from src.backend.core.schema import Fact, Node, QAInteraction, SessionData
-from src.backend.llm.mock_client import MockClient
-from src.backend.modules.compressor import Compressor
-from src.backend.modules.pruner import Pruner
-from src.backend.modules.questioner import Questioner
+from project.dqt.core.mcts_engine import MCTSEngine
+from project.dqt.core.schema import Fact, Node, QAInteraction, SessionData
+from project.dqt.llm.mock_client import MockClient
+from project.dqt.modules.compressor import Compressor
+from project.dqt.modules.pruner import Pruner
+from project.dqt.modules.questioner import Questioner
 
 
 class SequenceLLM:

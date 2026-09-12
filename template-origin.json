@@ -1,0 +1,258 @@
+{
+  "source": "PaperTemplate",
+  "files": [
+    {
+      "source_sha256": "e263df2e0cc9890b5a2bca03f534d48fbf2d160f27acef6fa5fa186dd6893034",
+      "source": "src/framework/__init__.py",
+      "destination": "src/framework/__init__.py"
+    },
+    {
+      "source_sha256": "3614779b5745e92ab9d2260c8ab30fc01aa7d9ea43b2ffb837bbe5331eaf7c30",
+      "source": "src/framework/compilation.py",
+      "destination": "src/framework/compilation.py"
+    },
+    {
+      "source_sha256": "d4a97932e581e9c559d58f96245e0246eb11618e3bb5d79a09d2485d5bb3d416",
+      "source": "src/framework/components.py",
+      "destination": "src/framework/components.py"
+    },
+    {
+      "source_sha256": "3bc2e69567b49dacec4c99c6fe8e90c4782818d5346e1186b4156b7fe9995357",
+      "source": "src/framework/config.py",
+      "destination": "src/framework/config.py"
+    },
+    {
+      "source_sha256": "729d8f31b4d1f7b3d6447b684875bf149d09315b8b14224b0c269b08430c0d3d",
+      "source": "src/framework/contracts.py",
+      "destination": "src/framework/contracts.py"
+    },
+    {
+      "source_sha256": "02e276d96a379e5cd11b6f18bb6047584afaec5c75fec183c9786d0ce984ba0b",
+      "source": "src/framework/results.py",
+      "destination": "src/framework/results.py"
+    },
+    {
+      "source_sha256": "a846f1cf724208b69218058d05f8556bcf3e67ebc8ee9800f57d7ab12572fe02",
+      "source": "src/framework/runtime/__init__.py",
+      "destination": "src/framework/runtime/__init__.py"
+    },
+    {
+      "source_sha256": "212624b2f9447d33d929958f13e715e8bfd2bea07aa16621cf3724268d3d62bf",
+      "source": "src/framework/runtime/archive.py",
+      "destination": "src/framework/runtime/archive.py"
+    },
+    {
+      "source_sha256": "90091267b1f68b31b7f12834b2baf15ec41b9998784ae593273a1c25ad631b85",
+      "source": "src/framework/runtime/artifacts.py",
+      "destination": "src/framework/runtime/artifacts.py"
+    },
+    {
+      "source_sha256": "65fe048a89db0137b537ccf3dcdf4b4340360ff4a5929628572d40ec881ea2d2",
+      "source": "src/framework/runtime/cache.py",
+      "destination": "src/framework/runtime/cache.py"
+    },
+    {
+      "source_sha256": "0f8afa28114e4e8935b36bec4fefa8a427693460d84ca3986db48085439ac7be",
+      "source": "src/framework/runtime/cli.py",
+      "destination": "src/framework/runtime/cli.py"
+    },
+    {
+      "source_sha256": "2cd3b44329f381d29fe53720c123a940e7bf80236c54c6e5d06d233e2b394356",
+      "source": "src/framework/runtime/dag.py",
+      "destination": "src/framework/runtime/dag.py"
+    },
+    {
+      "source_sha256": "3fd9020a4b0bd9240cb6d5c42080daea438f2385854eeeacac8b766567f98d4d",
+      "source": "src/framework/runtime/hooks.py",
+      "destination": "src/framework/runtime/hooks.py"
+    },
+    {
+      "source_sha256": "54dfcb324e63e8b168bd6cd36a90630b4d25d28a461a508028e30a03474d87f2",
+      "source": "src/framework/runtime/paths.py",
+      "destination": "src/framework/runtime/paths.py"
+    },
+    {
+      "source_sha256": "91ea7350e3e94e3f2a5fcf42e63baf71b1685cc8360582025e3bad6251312f55",
+      "source": "src/framework/runtime/plan_visualization.py",
+      "destination": "src/framework/runtime/plan_visualization.py"
+    },
+    {
+      "source_sha256": "48e9b0e6b3baf12217ae49098094396c90c9a8b553320ef6e062f2f0fe38767e",
+      "source": "src/framework/runtime/reporting.py",
+      "destination": "src/framework/runtime/reporting.py"
+    },
+    {
+      "source_sha256": "3d6dfb93c2889819ddf9e52f572da05f6c556bd9d04c243411d793fa691d7eab",
+      "source": "src/framework/runtime/settings.py",
+      "destination": "src/framework/runtime/settings.py"
+    },
+    {
+      "source_sha256": "0959465314db7ff91335471ccf4c54be81dbd98273d570b6a4bdd6a5abe49b3c",
+      "source": "src/framework/runtime/slurm.py",
+      "destination": "src/framework/runtime/slurm.py"
+    },
+    {
+      "source_sha256": "313e6e0a1cca525cd9b7af15e06675cd2c75e04fc1cee78af107073fee10e86f",
+      "source": "src/framework/runtime/study.py",
+      "destination": "src/framework/runtime/study.py"
+    },
+    {
+      "source_sha256": "ce0ed9b5bad3f117a499704f933528da0763d82e66fe43dfd81bc459cdeb9775",
+      "source": "src/framework/scoring.py",
+      "destination": "src/framework/scoring.py"
+    },
+    {
+      "source_sha256": "ace20f3e4281fd8c9f214578ba8d3d43a84971a94fd3a3d60370ed00bf2946ca",
+      "source": "src/framework/search.py",
+      "destination": "src/framework/search.py"
+    },
+    {
+      "source_sha256": "1392f5f647112de727a2d40dca375e8b8e8af70dd81393163bd05d9759dfbb67",
+      "source": "src/framework/statistics.py",
+      "destination": "src/framework/statistics.py"
+    },
+    {
+      "source_sha256": "dcccbdd49afb4bb382d967ebb78bc0d7041da64d95ce8a1f450e70161cca9ac6",
+      "source": "src/framework/templates.py",
+      "destination": "src/framework/templates.py"
+    },
+    {
+      "source_sha256": "965ddc006bde40776f50b5a84e856868b79d38453cd1ce7f3dc605411ca6baab",
+      "source": "src/framework/utils/__init__.py",
+      "destination": "src/framework/utils/__init__.py"
+    },
+    {
+      "source_sha256": "ea835dd8c0d35446e710a80d53fa13126ffe7578a27cafb7a06268786e987830",
+      "source": "src/framework/utils/catalog.py",
+      "destination": "src/framework/utils/catalog.py"
+    },
+    {
+      "source_sha256": "9d6ec003b16b7dc7c2e6e072f325e46854963850f4bacdf29dd18695b14caaa0",
+      "source": "src/framework/utils/fingerprint.py",
+      "destination": "src/framework/utils/fingerprint.py"
+    },
+    {
+      "source_sha256": "beb6facf4d7189414ec0b883d71f8b0e77e8d725b9fdd5a377b460ec4b5a9555",
+      "source": "src/framework/utils/paths.py",
+      "destination": "src/framework/utils/paths.py"
+    },
+    {
+      "source_sha256": "abe3e7c87859a530ab4da0a48e98a0326b04d16c0be6851b6fef385cf6f072f0",
+      "source": "src/framework/version.py",
+      "destination": "src/framework/version.py"
+    },
+    {
+      "source_sha256": "932fd27cea85951203d4f4e15dfecf62fd55801fe9334d491a1393876130a159",
+      "source": "src/workflows/__init__.py",
+      "destination": "src/workflows/__init__.py"
+    },
+    {
+      "source_sha256": "932fd27cea85951203d4f4e15dfecf62fd55801fe9334d491a1393876130a159",
+      "source": "src/project/__init__.py",
+      "destination": "src/project/__init__.py"
+    },
+    {
+      "source_sha256": "291774c9643e92ff233ce42264fd87c5c79cb55df0a7920b6cafa8a04dab127b",
+      "source": "tests/conftest.py",
+      "destination": "tests/integration/template/conftest.py"
+    },
+    {
+      "source_sha256": "224113ca0bc4fafdf34aaafc816d928cbec815710cbe3e85a597a8d12dfff88b",
+      "source": "tests/test_core.py",
+      "destination": "tests/integration/template/test_core.py"
+    },
+    {
+      "source_sha256": "5bc9867ec9de1b0d29e34148586bcd9f40bcbe00f984dd15d8587d7f255d003b",
+      "source": "tests/test_slurm.py",
+      "destination": "tests/integration/template/test_slurm.py"
+    },
+    {
+      "source_sha256": "1699b6ee0c0b13cfe9aced6e3c5509baa8666e3deedca79f18dca4fa913bd661",
+      "source": "docs/explanation/architecture.md",
+      "destination": "doc/template/explanation/architecture.md"
+    },
+    {
+      "source_sha256": "70e0b817af5f52f428dc0a56c985cc83bf21eebf90a1b5c5b4f92f6420879d78",
+      "source": "docs/explanation/incremental-execution.md",
+      "destination": "doc/template/explanation/incremental-execution.md"
+    },
+    {
+      "source_sha256": "aad19876652639255f1ccf332dccbb5eaf7af1f085214f8cdbe73832bd7d7912",
+      "source": "docs/migration.md",
+      "destination": "doc/template/migration.md"
+    },
+    {
+      "source_sha256": "6d1800a3cf508722b4a2d0ca6a8188c38d7283c1b17ef8b9544bd460c7c98cb5",
+      "source": "docs/README.md",
+      "destination": "doc/template/README.md"
+    },
+    {
+      "source_sha256": "8b1da03eb59dc2adca4128fa8a0fb2603767e6d95edc0b643970c0d36119eefc",
+      "source": "docs/reference/artifacts.md",
+      "destination": "doc/template/reference/artifacts.md"
+    },
+    {
+      "source_sha256": "e12ba1af30ed2a0ef9c20725cc6038dba675b48c81466feb437996401d0c8948",
+      "source": "docs/reference/cli.md",
+      "destination": "doc/template/reference/cli.md"
+    },
+    {
+      "source_sha256": "d6a70966992c1d24333c361ab99eb7a77d348416f33c32bc6a2c8f99407608f5",
+      "source": "docs/reference/interfaces.md",
+      "destination": "doc/template/reference/interfaces.md"
+    },
+    {
+      "source_sha256": "54fb344f6912bd3166ba56eedac54c37d658bb0705b8641b59537950b760e141",
+      "source": "docs/reference/report-contract.md",
+      "destination": "doc/template/reference/report-contract.md"
+    },
+    {
+      "source_sha256": "9d642fed4970be0e0293e96d23dba2ef3beee7e93805acc4893fea815e8db9e8",
+      "source": "docs/reference/study-schema.md",
+      "destination": "doc/template/reference/study-schema.md"
+    },
+    {
+      "source_sha256": "3a497e674303b04e328d2f5816f09b337f0ab75dc289281b6804254a0906d545",
+      "source": "docs/tutorials/first-study.md",
+      "destination": "doc/template/tutorials/first-study.md"
+    },
+    {
+      "source_sha256": "932fd27cea85951203d4f4e15dfecf62fd55801fe9334d491a1393876130a159",
+      "source": "src/workflows/agent/__init__.py",
+      "destination": "src/workflows/agent/__init__.py"
+    },
+    {
+      "source_sha256": "44af295229b0f2368f8b69f9f725149fd10ed42cc2c7d9ce6da9cb95944e025b",
+      "source": "src/workflows/agent/compiler.py",
+      "destination": "src/workflows/agent/compiler.py"
+    },
+    {
+      "source_sha256": "b20e28e17b2a285b34701c8222d5b2906b4715da13264be9d4cbf8f1bb5e07f0",
+      "source": "src/workflows/agent/runner.py",
+      "destination": "src/workflows/agent/runner.py"
+    },
+    {
+      "source_sha256": "244b38d970c9dec42f30b0cafecb5809b0886d598909428ba87577199b85359d",
+      "source": "src/project/agent.py",
+      "destination": "src/project/agent.py"
+    },
+    {
+      "source_sha256": "99856f4786b50d8ce9088181f7952a49b122cd2f0abe849ee8c174301d9a31be",
+      "source": "configs/studies/agent.yaml",
+      "destination": "configs/studies/agent.yaml"
+    },
+    {
+      "source_sha256": "bad30aed23fb59f2dee92e2751875dd65a5b3d55d0d058e6ca28d88638857d28",
+      "source": "docs/profiles/agent.md",
+      "destination": "doc/template/profiles/agent.md"
+    },
+    {
+      "source_sha256": "aedb3a1e63de5de0a51df31766b5f57e57f31f3932d2d5aab529bd4dc102c329",
+      "source": "tests/test_agent.py",
+      "destination": "tests/integration/template/test_agent.py"
+    }
+  ],
+  "date": "2026-09-12",
+  "schema_version": 1,
+  "profile": "agent"
+}

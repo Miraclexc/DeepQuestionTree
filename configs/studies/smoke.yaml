@@ -1,0 +1,32 @@
+schema_version: 2
+id: dqt-smoke
+profile: agent
+datasets:
+  - id: smoke
+    factory: project.datasets:load_cases
+    params: {path: datasets/smoke.jsonl}
+    version: "smoke-1"
+tasks:
+  - id: complex-response
+methods:
+  - id: tree-search
+    factory: project.methods:tree_search
+    version: "migration-1"
+    code_dependencies: [src/project/dqt, src/project/worker.py, config/prompts.yaml, config/settings.yaml]
+    params:
+      mock: true
+      mcts: {branch_factor: 2, max_depth: 3}
+experiments:
+  - id: migration-smoke
+    dataset_ids: [smoke]
+    task_id: complex-response
+    method_ids: [tree-search]
+    flow: evaluate
+    repeats: 1
+    params:
+      limits: {max_steps: 1, time_seconds: 60}
+    evaluation: {factory: project.evaluation:response_metrics, version: "1"}
+reports:
+  - id: summary
+    callable: project.reports:summary
+runtime: {seed: 0, max_workers: 1, device: cpu, backend: local}

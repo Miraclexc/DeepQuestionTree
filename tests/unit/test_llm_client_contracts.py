@@ -3,10 +3,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from src.backend.llm.client_interface import StructuredOutputContractError
-from src.backend.llm.llm_client import OpenAICompatibleClient
-from src.backend.llm.mock_client import MockClient
-from src.backend.llm.usage_tracking import LlmUsageRecorder, bind_usage_recorder
+from project.dqt.llm.client_interface import StructuredOutputContractError
+from project.dqt.llm.llm_client import OpenAICompatibleClient
+from project.dqt.llm.mock_client import MockClient
+from project.dqt.llm.usage_tracking import LlmUsageRecorder, bind_usage_recorder
 
 
 def _build_chat_response(content: str, tokens: int = 32):
@@ -140,7 +140,7 @@ async def test_openai_client_emits_trace_logs_when_debug_logging_enabled(monkeyp
         return _build_chat_response("debug response", tokens=21)
 
     monkeypatch.setattr(
-        "src.backend.llm.llm_client.get_settings",
+        "project.dqt.llm.llm_client.get_settings",
         lambda: SimpleNamespace(
             llm=SimpleNamespace(
                 api_key="debug-key",
@@ -159,7 +159,7 @@ async def test_openai_client_emits_trace_logs_when_debug_logging_enabled(monkeyp
         ),
     )
     monkeypatch.setattr(
-        "src.backend.llm.llm_client.openai.AsyncOpenAI",
+        "project.dqt.llm.llm_client.openai.AsyncOpenAI",
         lambda **kwargs: SimpleNamespace(
             chat=SimpleNamespace(
                 completions=SimpleNamespace(
@@ -169,7 +169,7 @@ async def test_openai_client_emits_trace_logs_when_debug_logging_enabled(monkeyp
         ),
     )
     monkeypatch.setattr(
-        "src.backend.llm.llm_client.get_llm_logger",
+        "project.dqt.llm.llm_client.get_llm_logger",
         lambda: trace_logger,
     )
 

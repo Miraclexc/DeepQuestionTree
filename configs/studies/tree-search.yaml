@@ -1,0 +1,38 @@
+schema_version: 2
+id: dqt-tree-search
+profile: agent
+datasets:
+  - id: questions
+    factory: project.datasets:load_cases
+    params: {path: datasets/questions.jsonl}
+    version: "migration-examples-1"
+tasks:
+  - id: complex-response
+methods:
+  - id: tree-search
+    factory: project.methods:tree_search
+    version: "deepseek-v4.1-flash-2026-09-10"
+    code_dependencies: [src/project/dqt, src/project/worker.py, config/prompts.yaml, config/settings.yaml]
+    params:
+      mock: false
+      api_key_env: LLM__API_KEY
+      llm:
+        base_url: https://api.deepseek.com
+        generation_model: deepseek-flash
+        decision_model: deepseek-flash
+        timeout: 120
+      mcts: {branch_factor: 2, max_depth: 3}
+experiments:
+  - id: initial-evaluation
+    dataset_ids: [questions]
+    task_id: complex-response
+    method_ids: [tree-search]
+    flow: evaluate
+    repeats: 2
+    params:
+      limits: {max_steps: 3, time_seconds: 900, tokens: 50000}
+    evaluation: {factory: project.evaluation:response_metrics, version: "1"}
+reports:
+  - id: summary
+    callable: project.reports:summary
+runtime: {seed: 0, max_workers: 1, device: cpu, backend: local}

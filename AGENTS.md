@@ -3,6 +3,29 @@
 > **Version**: 1.0.0  
 > **Last Updated**: 2026-02-18
 
+## Current Research Project (2026-09-12)
+
+This repository is now a standalone Agent experiment project based on PaperTemplate.
+Read `doc/README.md`, `doc/experiment-guide.md` and `doc/migration.md` first.
+The active layers are `src/framework`, `src/workflows/agent`, and `src/project`;
+retained search algorithms live in `src/project/dqt`. There is no frontend, HTTP API,
+or database service. Use `uv sync --group dev` and the installed `paper` CLI.
+
+Keep datasets, method execution, evaluation, and paper reports separate. Hidden
+references belong only to scoring. Declare all behavior-affecting code and prompts
+in component dependencies; update method versions when remote services change.
+Never count cached replays as independent samples or mock results as scientific evidence.
+
+Use DeepSeek Flash (`deepseek-flash`) for both generation and decision calls unless
+the user changes that requirement. Credentials are read from the Git-ignored project
+`.env` or process environment; never put them into Study params or saved artifacts.
+
+Run `uv run pytest tests/ -v` and `uv run python run_tests.py quality` after changes.
+Real E2E is explicit: `uv run pytest tests/e2e/ -v --run-e2e`; it uses real Flash calls
+and fails if credentials are missing. Offline integration tests may use the original
+mock provider, and are not Class C E2E. Preserve real failure records and execution
+provenance; summaries must consume committed metrics rather than rerun the method.
+
 ---
 
 ## Table of Contents

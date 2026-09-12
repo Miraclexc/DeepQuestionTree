@@ -7,8 +7,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.backend.core.schema import Fact
-from src.backend.modules.questioner import Questioner
+from project.dqt.core.schema import Fact
+from project.dqt.modules.questioner import Questioner
 
 
 class ContractAwareQuestionerLLM:

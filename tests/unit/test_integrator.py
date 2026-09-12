@@ -2,9 +2,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.backend.core.schema import Fact, Node, QAInteraction, SessionData
-from src.backend.llm.mock_client import MockClient
-from src.backend.modules.integrator import Integrator
+from project.dqt.core.schema import Fact, Node, QAInteraction, SessionData
+from project.dqt.llm.mock_client import MockClient
+from project.dqt.modules.integrator import Integrator
 
 
 class ContractAwareIntegratorLLM:

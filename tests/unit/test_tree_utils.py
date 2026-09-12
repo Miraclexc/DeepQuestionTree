@@ -1,5 +1,5 @@
-from src.backend.core.schema import Fact, Node, SessionData
-from src.backend.core.tree_utils import (
+from project.dqt.core.schema import Fact, Node, SessionData
+from project.dqt.core.tree_utils import (
     get_path_facts,
     get_path_node_ids,
     normalize_question_text,

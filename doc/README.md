@@ -1,50 +1,17 @@
-# Documentation Index
+# 文档索引
 
-> Last Updated: 2026-05-12
->
-> 本页唯一负责：按受众和职责组织文档入口，不承载实现细节本身。
+> Last Updated: 2026-09-12
 
-先从根目录 [`README.md`](../README.md) 获取最短启动路径，再按下面的受众选择文档。
+本仓库以独立科研实验为主入口，已移除交互式工作台。
 
-## 用户使用
-
-| Document | 唯一职责 |
+| 文档 | 职责 |
 |---|---|
-| [user-guide.md](./user-guide.md) | 面向本地使用者的完整操作手册：启动、Token 设置、创建探索、查看节点、生成报告、导出、清理数据与常见问题。 |
+| [experiment-guide.md](experiment-guide.md) | 数据、方法、预算、参数试验、结果读取与自动化操作 |
+| [project-overview.md](project-overview.md) | 分层架构、进程隔离和结果流 |
+| [developer-guide.md](developer-guide.md) | 目录职责、UV、扩展与指纹依赖规则 |
+| [testing-and-e2e.md](testing-and-e2e.md) | 离线回归、质量检查和真实 Flash E2E |
+| [llm-structured-output-contract.md](llm-structured-output-contract.md) | 模型请求、结构化响应及实验失败策略 |
+| [migration.md](migration.md) | 原实现映射、模板来源、验收与保留的算法限制 |
+| [template/README.md](template/README.md) | 迁入模板的公共接口、缓存、统计、报告与调度参考 |
 
-## 开发维护
-
-| Document | 唯一职责 |
-|---|---|
-| [developer-guide.md](./developer-guide.md) | 面向开发者的环境基线、目录职责、read-model / infrastructure 边界、前后端调试方式、变更同步点和文档维护规则。 |
-
-## 测试与验收
-
-| Document | 唯一职责 |
-|---|---|
-| [testing-and-e2e.md](./testing-and-e2e.md) | 项目级测试总览：`run_tests.py` 语义、质量门禁、本地验收约束、真实 provider E2E 与手动验收主流程。 |
-| [frontend-testing.md](./frontend-testing.md) | 前端专属测试细节：Vitest、MSW、Playwright、stub、浏览器 smoke 和前端命令。 |
-
-## 架构与接口
-
-| Document | 唯一职责 |
-|---|---|
-| [project-overview.md](./project-overview.md) | 当前真实架构、运行时约束、配置边界、数据流和已知原型边界。 |
-| [application-layer-and-auth.md](./application-layer-and-auth.md) | 统一 API 路由、鉴权规则、错误响应与 read-model 契约。 |
-| [llm-structured-output-contract.md](./llm-structured-output-contract.md) | 后端 LLM 结构化输出契约：`text` / `json_object` / `json_array`、调用方映射、provider 边界与 fallback 规则。 |
-
-## Recommended Reading Paths
-
-### 如果你是使用者
-
-1. [`README.md`](../README.md)
-2. [`user-guide.md`](./user-guide.md)
-
-### 如果你是开发者
-
-1. [`README.md`](../README.md)
-2. [`developer-guide.md`](./developer-guide.md)
-3. [`project-overview.md`](./project-overview.md)
-4. [`llm-structured-output-contract.md`](./llm-structured-output-contract.md)
-5. [`application-layer-and-auth.md`](./application-layer-and-auth.md)
-6. [`testing-and-e2e.md`](./testing-and-e2e.md)
+推荐依次阅读根 README、实验指南、架构说明；修改代码前阅读相应模块的文档，并同步维护。

@@ -1,259 +1,43 @@
-# Developer Guide
+# 开发指南
 
-> Last Updated: 2026-05-04
->
-> 本页唯一负责：面向开发者说明环境基线、目录职责、调试入口、变更同步点和文档维护规则。
+> Last Updated: 2026-09-12
 
-如果你只是想使用系统，请优先阅读 [`user-guide.md`](./user-guide.md)。
+## 环境与目录
 
-## 1. Environment Baseline
-
-- Python 基线：[`../.python-version`](../.python-version) 固定为 `3.12`
-- Python 依赖来源：[`../pyproject.toml`](../pyproject.toml) 和 [`../uv.lock`](../uv.lock)
-- Python 环境管理：只使用 `uv`
-- Node 基线：项目前端工具链与本地验收统一使用 `Node 20`
-
-禁止直接使用：
-
-- `pip install`
-- 手工编辑 `uv.lock`
-
-常用初始化命令：
-
-```bash
+```powershell
 uv sync --group dev
-cd src/frontend
-npm ci
-```
-
-## 2. Development Entry Points
-
-### 2.1 后端
-
-启动后端：
-
-```bash
-uv run python -m src.backend.main
-```
-
-开发态热重载：
-
-```bash
-uv run uvicorn src.backend.main:app --reload --host 0.0.0.0 --port 8001
-```
-
-关键入口文件：
-
-- [`../src/backend/main.py`](../src/backend/main.py)
-- [`../src/backend/api/router.py`](../src/backend/api/router.py)
-- [`../src/backend/services/runtime.py`](../src/backend/services/runtime.py)
-
-### 2.2 前端
-
-启动前端：
-
-```bash
-cd src/frontend
-npm run dev
-```
-
-关键入口文件：
-
-- [`../src/frontend/app/page.tsx`](../src/frontend/app/page.tsx)
-- [`../src/frontend/components/DeepQuestionTree.tsx`](../src/frontend/components/DeepQuestionTree.tsx)
-
-## 3. Directory Responsibilities
-
-### 3.1 Backend
-
-| Path | Responsibility |
-|---|---|
-| `src/backend/api/` | 路由、DTO、鉴权依赖、read-model 构建 |
-| `src/backend/services/` | 运行时门面、应用服务、协调器、串行 commit 通道、仓储边界 |
-| `src/backend/core/` | 领域对象、MCTS engine、snapshot/proposal 并发提交流程 |
-| `src/backend/modules/` | checker、questioner、compressor、pruner、integrator；`persistence.py` 仅为旧导入兼容层 |
-| `src/backend/infrastructure/` | SQLite 会话库与报告缓存等基础设施 adapter |
-| `src/backend/llm/` | LLM client、基于 `purpose` 的 generation/decision 模型路由、prompt manager、mock client |
-| `config/` | 默认配置与 prompts |
-
-### 3.2 Frontend
-
-| Path | Responsibility |
-|---|---|
-| `src/frontend/app/` | Next.js app shell |
-| `src/frontend/components/` | 页面组件与细分展示组件 |
-| `src/frontend/hooks/` | 轮询、命令、节点详情、报告状态、全局错误 |
-| `src/frontend/lib/` | API client、contracts、共享类型、工具函数 |
-| `src/frontend/scripts/` | 前端本地工具链包装脚本（如 Playwright 启动入口） |
-| `tests/frontend/` | 前端 Vitest、MSW、Playwright 测试文件 |
-
-### 3.3 Runtime Data
-
-默认运行产物目录：
-
-- `data/sessions`
-- `data/sessions/deepquestiontree.sqlite3`
-- `data/logs`
-
-当前真实职责：
-
-- `data/sessions/deepquestiontree.sqlite3` 是唯一活跃会话持久化载体
-- `data/sessions/*.json` 旧快照不再属于运行主链路
-- `data/logs/` 只存放本地轮转日志，不应被当作工程输入
-
-提交代码前不要把新的运行产物带入版本库，也不要把本地日志或旧快照误判为需要维护的“项目数据”。
-
-## 4. Configuration Boundaries
-
-后端配置优先级：
-
-```text
-代码默认值 < config/settings.yaml < 根目录 .env < 进程环境变量
-```
-
-关键事实：
-
-- 后端配置加载实现在 [`../src/backend/config_loader.py`](../src/backend/config_loader.py)
-- 后端不会读取 `src/frontend/.env.local`
-- 前端只读取自己的 `NEXT_PUBLIC_*` 环境变量
-- 后端已不再维护 `app.api_host`；浏览器访问地址仍由前端 `NEXT_PUBLIC_API_HOST` / `NEXT_PUBLIC_API_PORT` 决定
-- Bearer Token 后端来源是 `security.api_token` 或 `SECURITY__API_TOKEN`
-- 浏览器端优先使用 `localStorage["dqt.apiToken"]`
-- 会话和报告缓存统一落在 `storage.session_db_path`
-- 默认 SQLite 文件路径是 `data/sessions/deepquestiontree.sqlite3`
-- [`.env.example`](../.env.example) 现在代表“真实 provider 优先”的样板；离线调试请改用 [`.env.mock.example`](../.env.mock.example)
-- 默认真实 provider 为 DeepSeek V4 Preview，经由 OpenAI-compatible client 接入
-- 默认 `llm.base_url=https://api.deepseek.com`
-- 默认 `llm.generation_model=deepseek-v4-pro`、`llm.decision_model=deepseek-v4-pro`
-- 默认 `llm.generation_thinking=false`、`llm.decision_thinking=true`、`llm.generation_reasoning_effort=high`、`llm.decision_reasoning_effort=high`
-- DeepSeek thinking 开关通过 `extra_body.thinking` 注入；`reasoning_effort` 仅在 thinking 开启时作为顶层请求参数注入
-- `RuntimeModuleFactory` 会在真实 provider 模式启动前预检 `llm.api_key`、`llm.base_url`、`llm.generation_model` 和 `llm.decision_model`
-- 新 token 账本字段 `llm_usage` 和 `token_accounting_version` 持久化在 session JSON 中；`sessions` 摘要表额外保留 `token_accounting_version` 供列表页判断 legacy gating
-
-## 5. Change Synchronization Points
-
-### 5.1 改后端 API 时
-
-同步检查以下位置：
-
-- [`../src/backend/api/router.py`](../src/backend/api/router.py)
-- [`../src/backend/api/dto.py`](../src/backend/api/dto.py)
-- [`../src/backend/api/read_models.py`](../src/backend/api/read_models.py)
-- [`../src/frontend/lib/api-client.ts`](../src/frontend/lib/api-client.ts)
-- [`../src/frontend/lib/api.ts`](../src/frontend/lib/api.ts)
-- [`../src/frontend/lib/contracts.ts`](../src/frontend/lib/contracts.ts)
-- [`./application-layer-and-auth.md`](./application-layer-and-auth.md)
-
-如果新增或重命名 session-scoped 路由，必须同时更新文档中的 endpoint matrix。
-
-如果改到 `SessionSummary` / `SessionReadModel` 的 token 统计字段（如 `is_legacy_token_accounting`、`total_tokens_used` 或报告可用性 gating），必须同步检查：
-
-- [`../src/frontend/components/sidebar/SessionListItem.tsx`](../src/frontend/components/sidebar/SessionListItem.tsx)
-- [`../src/frontend/components/workspace/WorkspaceHeader.tsx`](../src/frontend/components/workspace/WorkspaceHeader.tsx)
-- [`../src/frontend/hooks/useDeepQuestionTree.ts`](../src/frontend/hooks/useDeepQuestionTree.ts)
-
-### 5.2 改前端数据流时
-
-同步检查以下位置：
-
-- [`../src/frontend/hooks/useDeepQuestionTree.ts`](../src/frontend/hooks/useDeepQuestionTree.ts)
-- [`../src/frontend/hooks/useSessionCommands.ts`](../src/frontend/hooks/useSessionCommands.ts)
-- [`../src/frontend/hooks/useNodeDetails.ts`](../src/frontend/hooks/useNodeDetails.ts)
-- [`../src/frontend/hooks/useReportState.ts`](../src/frontend/hooks/useReportState.ts)
-- [`./user-guide.md`](./user-guide.md)
-
-如果按钮文案、交互路径或 Token 使用方式改变，用户手册必须同步。
-
-当前树刷新契约也在这一层同步：
-
-- `/api/status` 只做轻量轮询
-- `TreeResponse.session_revision` 驱动树数据刷新
-- `TreeCanvas` 在拓扑不变时复用旧布局并跳过额外 viewport fit
-- `History` 的 `Resume Session` 走 `useSessionCommands.resumeSession()` -> `POST /api/start(session_id=...)`
-- 恢复会话时必须同时关闭 `Node Details` / `Exploration Report`，否则同一 session 重新选中时不会自动清掉旧面板
-
-### 5.3 改测试入口时
-
-同步检查以下位置：
-
-- [`../run_tests.py`](../run_tests.py)
-- [`../src/frontend/package.json`](../src/frontend/package.json)
-- [`./testing-and-e2e.md`](./testing-and-e2e.md)
-- [`./frontend-testing.md`](./frontend-testing.md)
-
-### 5.4 改 LLM client / prompts / structured output 时
-
-同步检查以下位置：
-
-- [`../src/backend/modules/checker.py`](../src/backend/modules/checker.py)
-- [`../src/backend/llm/client_interface.py`](../src/backend/llm/client_interface.py)
-- [`../src/backend/llm/llm_client.py`](../src/backend/llm/llm_client.py)
-- [`../src/backend/llm/usage_tracking.py`](../src/backend/llm/usage_tracking.py)
-- [`../config/settings.yaml`](../config/settings.yaml)
-- [`../.env.example`](../.env.example)
-- [`../config/prompts.yaml`](../config/prompts.yaml)
-- [`./llm-structured-output-contract.md`](./llm-structured-output-contract.md)
-- `tests/unit/test_llm_client_contracts.py`
-- `tests/unit/test_checker.py`
-
-如果结构化输出的顶层形状、checker 决策字段、模型路由或 fallback 行为发生变化，必须同时更新契约文档和对应测试。
-
-当前 prompt / toolchain 额外约束：
-
-- `PromptManager` 使用 Jinja `StrictUndefined`；改 prompt 变量时必须同步更新 `tests/unit/test_prompt_manager.py`
-- `config/prompts.yaml` 只保留活跃调用项，不要保留未使用 prompt
-- 当前已移除未接入运行链路的 `compress_context` prompt；不要重新引入“仅测试存在”的 prompt 漂移
-- `src/frontend/vitest.config.ts` 中 `@testing-library/*` 只允许稳定包入口 alias，不要再指向包内部 `dist` 路径
-- 会话级 token 统计现在必须在 LLM client 边界自动上报；不要再在 questioner/checker/compressor/integrator 里手工累加 session 总 token
-
-## 6. Quality And Validation
-
-项目级测试与验收矩阵以 [`testing-and-e2e.md`](./testing-and-e2e.md) 为唯一事实来源。开发者日常至少应知道以下入口：
-
-```bash
 uv run python run_tests.py quality
-uv run python run_tests.py ci
+uv run pytest tests/ -v
 ```
 
-其中：
+只通过 UV 管理 Python 环境和依赖，同时维护 pyproject.toml 与 uv.lock。本仓库为可安装的 src-layout 项目，`paper` 指向 `framework.runtime.cli:main`。请在仓库根执行命令；配置、prompts 和数据文件随源码管理。
 
-- `quality` 做 Python 格式、导入顺序和类型检查
-- `ci` 做项目级本地验收，并校验默认 `data/` 工作区不被测试污染
-- 并发 MCTS 回归位于 `tests/unit/test_mcts_concurrency.py` 与 `tests/integration/test_mcts_concurrency.py`
+| 路径 | 职责 |
+|---|---|
+| src/framework/ | 来自 PaperTemplate 的公共执行、缓存、报告、统计与调度核心 |
+| src/workflows/agent/ | Agent workflow compiler、输入/参考答案隔离与评分 DAG |
+| src/project/dqt/ | 迁入的搜索树核心与 LLM 模块 |
+| src/project/methods.py | 方法工厂、公开参数校验、子进程隔离、凭据传递 |
+| src/project/worker.py | 原算法装配、预算、调用轨迹、搜索树与回答产物 |
+| src/project/datasets.py | JSONL 问题集合加载与验证 |
+| src/project/evaluation.py | 独立离线评分和运行统计 |
+| src/project/reports.py | 仅读取已提交指标的论文汇总 |
+| src/project/agent.py | 原模板保留的离线接口示例，供模板回归使用 |
+| config/ | 原算法默认参数和 Jinja prompts |
+| configs/studies/ | 可执行 Study 配置 |
+| datasets/ | 版本化实验输入，当前仅迁移示例 |
+| tests/unit/、tests/integration/、tests/e2e/ | 分层验证 |
+| outputs/ | 运行、缓存、归档及验证输出，Git 忽略 |
+| template-origin.json | 迁入模板文件的原始 SHA-256 与来源映射 |
 
-真实 provider E2E 是下一阶段前的独立门禁，不纳入默认 `ci`。它只通过进程环境变量读取 API key，默认测试规模为 `E2E_MAX_SIMULATIONS=1`、`E2E_BRANCH_FACTOR=2`、`E2E_TIMEOUT_SECONDS=600`：
+## 修改边界
 
-```bash
-uv run pytest tests/e2e/ -v --run-e2e --e2e-provider deepseek
-```
+新增算法时先写失败测试，再增加 `project` 中的方法工厂，返回提供 `run(case, context)` 的对象。不要让 DAG 核心识别具体搜索算法。
 
-前端专属测试细节见 [`frontend-testing.md`](./frontend-testing.md)。
+所有影响结果的辅助代码、prompt、配置必须列入方法的 `code_dependencies`；也可通过 `__paper_dependencies__` 声明 Python 实现依赖。当前 tree-search 配置覆盖 `src/project/dqt`、worker、prompts 和算法默认配置。不同的远程模型发布版必须更新方法 version。
 
-## 7. Documentation Maintenance Rules
+数据文件内容由加载结果投影进入 case 身份。只修改 reference 时重做评分；若同时改了加载器版本或输入，相关执行会失效。不要将整个含 reference 的文件另加到 method 的 code_dependencies，否则会扩大失效范围。
 
-本仓库当前文档分工如下：
+评分函数只读取 result/reference；新增指标不会增加模型调用。报告只读取已提交产物；不能在报告函数中重建搜索树、重新问模型或覆写原始结果。
 
-- 根 [`../README.md`](../README.md)：入口页，不维护深度细节
-- [`./user-guide.md`](./user-guide.md)：用户操作
-- [`./developer-guide.md`](./developer-guide.md)：开发维护
-- [`./project-overview.md`](./project-overview.md)：真实架构与边界
-- [`./application-layer-and-auth.md`](./application-layer-and-auth.md)：接口与鉴权
-- [`./llm-structured-output-contract.md`](./llm-structured-output-contract.md)：LLM 结构化输出契约
-- [`./testing-and-e2e.md`](./testing-and-e2e.md)：项目级测试
-- [`./frontend-testing.md`](./frontend-testing.md)：前端测试
-
-更新文档时遵守以下规则：
-
-- 每篇文档只维护自己的唯一职责，不复制另一篇的完整命令矩阵或接口表。
-- 所有命令字面量、环境变量名、路径和按钮文案必须与代码一致。
-- 每次改动文档时更新 `Last Updated`。
-- 如果发现旧文档描述的是目标架构而不是当前实现，以当前代码为准并立即修文档。
-
-## 8. Suggested Reading Sequence
-
-1. [`../README.md`](../README.md)
-2. [`./project-overview.md`](./project-overview.md)
-3. [`./llm-structured-output-contract.md`](./llm-structured-output-contract.md)
-4. [`./application-layer-and-auth.md`](./application-layer-and-auth.md)
-5. [`./testing-and-e2e.md`](./testing-and-e2e.md)
-6. [`./frontend-testing.md`](./frontend-testing.md)
+模板源码保持来源可追踪，格式检查不重排 framework/workflows 和原模板测试；项目算法与新增适配层继续执行 black/isort，原算法执行 mypy。真实 API 测试不能使用 mock。修改后同步 [实验指南](experiment-guide.md) 和有关契约；新文档加入索引。

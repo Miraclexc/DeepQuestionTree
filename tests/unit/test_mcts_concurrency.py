@@ -6,9 +6,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.backend.core.mcts_engine import MCTSEngine
-from src.backend.core.schema import Fact, Node, QAInteraction, SessionData
-from src.backend.llm.usage_tracking import record_usage_for_current_request
+from project.dqt.core.mcts_engine import MCTSEngine
+from project.dqt.core.schema import Fact, Node, QAInteraction, SessionData
+from project.dqt.llm.usage_tracking import record_usage_for_current_request
 
 
 def build_settings(*, max_simulations: int = 4, branch_factor: int = 1):

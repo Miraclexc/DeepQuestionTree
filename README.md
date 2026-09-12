@@ -1,127 +1,57 @@
 # DeepQuestionTree
 
-> Last Updated: 2026-05-04
->
-> 本页唯一负责：作为项目入口页，提供最短启动路径，并把用户与开发者分流到各自文档。
+> Last Updated: 2026-09-12
 
-DeepQuestionTree 是一个基于 MCTS 和 LLM 的深度问题探索工作台。系统会围绕一个全局问题持续生成子问题、回答、事实和剪枝结果，最后输出问题树与总结报告。
+基于问题搜索树与 LLM 的独立科研实验项目。采用 PaperTemplate 的 Agent 工作流，将数据、方法执行、独立评分和论文结果汇总分开管理。原有前后端工作台、HTTP API 和 SQLite 会话服务已从代码中移除；MCTS、提问、核查、事实压缩及回答整合算法位于 `src/project/dqt/`。
 
-## Quick Start
+## 开始实验
 
-### Prerequisites
+只需要 Python 3.12 和 UV，无需 Node 或数据库。
 
-- Python `3.12`
-- Node `20`
-- `uv`
-- `npm`
-
-Python 依赖只通过 [`pyproject.toml`](./pyproject.toml) 和 [`uv.lock`](./uv.lock) 管理。请使用 `uv`，不要直接使用 `pip install`。
-
-### Install Dependencies
-
-```bash
+```powershell
 uv sync --group dev
-cd src/frontend
-npm ci
+uv run paper validate configs/studies/smoke.yaml
+uv run paper plan configs/studies/smoke.yaml
+uv run paper run configs/studies/smoke.yaml --progress
+uv run paper run configs/studies/smoke.yaml --progress
 ```
 
-### Configure Local Environment
+`smoke.yaml` 使用原有 mock provider 验证真实搜索算法和实验流程；第二次执行应显示 `executed=0`。它不提供科学性能证据。
 
-真实 provider 默认样板在 [`.env.example`](./.env.example)，离线 mock 样板在 [`.env.mock.example`](./.env.mock.example)。
+## DeepSeek Flash 实验
 
-如果你要直接连真实 provider：
+将凭据写入项目根目录 `.env`（已被 Git 忽略）：
 
-```bash
-copy .env.example .env
+```dotenv
+LLM__API_KEY=your-key
 ```
 
-如果你只想离线调试：
+已配置的生成与核查模型均为 `deepseek-flash`，即截至 2026-09-12 官方提供的 DeepSeek-V4.1-Flash。模型和预算在版本化 YAML 中管理；`.env` 只向实验 worker 提供指定的凭据，进程环境优先。模型别名可能随服务升级变化，服务升级后应更新方法 `version`。
 
-```bash
-copy .env.mock.example .env
+```powershell
+uv run paper validate configs/studies/tree-search.yaml
+uv run paper plan configs/studies/tree-search.yaml
+uv run paper run configs/studies/tree-search.yaml --progress
+uv run paper export outputs/studies/dqt-tree-search outputs/tree-search-metrics.csv
+uv run paper archive dqt-tree-search
 ```
 
-后端配置优先级固定为：
+真实配置目前是迁移示例：2 个测试问题、2 次重复，每棵树最多 3 次搜索步骤，整次运行的预算为 900 秒、50,000 tokens。示例问题没有标准答案，`exact_match` 为 null；`completed` 仅表示执行成功，不代表答案正确。真实 benchmark、基线与消融设计留待下一阶段确定。
 
-```text
-代码默认值 < config/settings.yaml < 根目录 .env < 进程环境变量
+## 结果与验证
+
+完整运行入口是 `outputs/studies/<id>/latest.json`。它指向不可变运行目录，包含配置快照、依赖版本、指标、产物索引及报告索引。每个执行产物包含 `result.json`、`tree.json`、`trace.json`、`answer_report.json` 和日志；论文比较表为 `comparison.csv` / `comparison.md`。用 `ResultStore` 读取一次完整运行，不直接拼接不同运行的结果。
+
+```powershell
+uv run pytest tests/ -v
+uv run python run_tests.py quality
+uv run pytest tests/e2e/ -v --run-e2e
 ```
 
-当前模型分工固定为：
+真实 E2E 会消耗已配置的 Flash API；默认测试不执行真实调用。
 
-- `LLM__GENERATION_MODEL`：负责回答、提问、摘要和报告生成
-- `LLM__DECISION_MODEL`：唯一的核查模型，负责问题预审、低价值路径复核与事实合并判定
-- `CHECKER__*`：控制历史窗口、字面归一化短路和 fail-open 行为
-
-默认真实 provider 已收敛为 DeepSeek V4 Preview，并通过 OpenAI-compatible client 接入：
-
-- `LLM__BASE_URL=https://api.deepseek.com`
-- `LLM__GENERATION_MODEL=deepseek-v4-pro`
-- `LLM__DECISION_MODEL=deepseek-v4-pro`
-- `LLM__GENERATION_THINKING=false`
-- `LLM__DECISION_THINKING=true`
-- `LLM__GENERATION_REASONING_EFFORT=high`
-- `LLM__DECISION_REASONING_EFFORT=high`
-
-`deepseek-chat` / `deepseek-reasoner` 是旧兼容别名，官方停用窗口为 2026-07-24；新部署请使用 `deepseek-v4-pro` 或按需覆盖为 `deepseek-v4-flash`。系统不会自动 fallback 到别的模型。DeepSeek thinking 开关通过 `extra_body.thinking` 发送；`reasoning_effort` 只在对应链路开启 thinking 时作为顶层请求参数发送。
-
-默认会话与报告持久化文件为：
-
-- `data/sessions/deepquestiontree.sqlite3`
-
-前端公开配置放在 `src/frontend/.env.local`，常用变量如下：
-
-```env
-NEXT_PUBLIC_API_HOST=http://localhost
-NEXT_PUBLIC_API_PORT=8001
-NEXT_PUBLIC_API_TOKEN=dev-token
-```
-
-真实 provider 模式现在会在启动前做配置预检；如果 `LLM__API_KEY`、`LLM__BASE_URL` 或模型名缺失，会直接返回 `configuration_error`，并提示切到 mock 配置，而不是等到运行中才模糊失败。
-
-真实 DeepSeek E2E 只通过进程环境变量读取测试 key，不把 key 写入仓库文件。默认 smoke 会把测试规模收敛到 `E2E_MAX_SIMULATIONS=1`、`E2E_BRANCH_FACTOR=2`、`E2E_TIMEOUT_SECONDS=600`，避免把慢速 provider 响应误判为系统不可用：
-
-```bash
-uv run pytest tests/e2e/ -v --run-e2e --e2e-provider deepseek
-```
-
-### Start the App
-
-启动后端：
-
-```bash
-uv run python -m src.backend.main
-```
-
-启动前端：
-
-```bash
-cd src/frontend
-npm run dev
-```
-
-默认访问地址：
-
-- 前端：`http://localhost:3000`
-- 后端：`http://localhost:8001`
-
-如果浏览器请求返回 `401` 或 `403`，请先设置 Bearer Token：
-
-```js
-localStorage.setItem("dqt.apiToken", "dev-token");
-```
-
-运行中如果 MCTS worker / 引擎出现致命异常，会话会进入 `error` 状态，`/api/status` 与 session/tree read-model 会暴露最新 `session_revision` 和错误消息，前端只会在 revision 变化时重新拉树。
-
-## Documentation
-
-- 用户操作与常见问题：[`doc/user-guide.md`](./doc/user-guide.md)
-- 开发环境、目录职责与协作约束：[`doc/developer-guide.md`](./doc/developer-guide.md)
-- 文档总索引：[`doc/README.md`](./doc/README.md)
-
-## Canonical References
-
-- 真实架构与边界：[`doc/project-overview.md`](./doc/project-overview.md)
-- API、鉴权与错误契约：[`doc/application-layer-and-auth.md`](./doc/application-layer-and-auth.md)
-- 项目级测试、本地验收与真实 E2E：[`doc/testing-and-e2e.md`](./doc/testing-and-e2e.md)
-- 前端测试细节：[`doc/frontend-testing.md`](./doc/frontend-testing.md)
+- [文档索引](doc/README.md)
+- [实验配置与自动化操作](doc/experiment-guide.md)
+- [目录与开发边界](doc/developer-guide.md)
+- [迁移说明与验收记录](doc/migration.md)
+- [测试约定](doc/testing-and-e2e.md)

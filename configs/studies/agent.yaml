@@ -1,0 +1,26 @@
+schema_version: 2
+id: agent-demo
+profile: agent
+datasets:
+  - id: cases
+    factory: project.agent:cases
+tasks:
+  - id: respond
+methods:
+  - id: agent
+    factory: project.agent:runner
+    params: {use_tool: true}
+experiments:
+  - id: evaluation
+    dataset_ids: [cases]
+    task_id: respond
+    method_ids: [agent]
+    flow: evaluate
+    repeats: 2
+    params:
+      limits: {max_steps: 3}
+    search:
+      strategy: grid
+      mode: compare
+      parameters: {use_tool: [false, true]}
+runtime: {seed: 0}

@@ -7,8 +7,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.backend.core.schema import Fact, Node, QAInteraction, SessionData
-from src.backend.modules.pruner import Pruner
+from project.dqt.core.schema import Fact, Node, QAInteraction, SessionData
+from project.dqt.modules.pruner import Pruner
 
 
 class SequencePrunerChecker:

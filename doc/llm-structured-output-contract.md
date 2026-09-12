@@ -1,8 +1,8 @@
 # LLM Structured Output Contract
 
-> Last Updated: 2026-05-04
+> Last Updated: 2026-09-12
 >
-> 本页唯一负责：定义后端 LLM 调用的结构化输出契约、调用方映射、provider 边界、异常与 fallback 语义。
+> 本页唯一负责：定义实验算法 LLM 调用的结构化输出契约、调用方映射、provider 边界、异常与 fallback 语义。
 
 ## 1. Contract Types
 
@@ -22,7 +22,7 @@
 
 ## 2. Callsite Matrix
 
-当前后端调用与契约映射如下：
+当前实验算法调用与契约映射如下：
 
 | Caller | Prompt / behavior | Contract | Expected payload |
 |---|---|---|---|
@@ -40,8 +40,8 @@
 
 当前实现继续基于 `chat.completions`：
 
-- 默认真实 provider 是 DeepSeek V4 Preview，但运行时接口仍保持通用 `LLM__*` 配置与 OpenAI-compatible client。
-- 默认模型为 `deepseek-v4-pro`；generation 与 decision 两个 purpose 继续分开配置，便于切换到 `deepseek-v4-flash` 或其他 OpenAI-compatible 模型。
+- 真实实验使用 DeepSeek-V4.1-Flash，通过 OpenAI-compatible client 调用。
+- generation 与 decision 均为 `deepseek-flash`；请求设置来自版本化 Study，凭据由项目 `.env` 或进程环境提供。
 - DeepSeek thinking 参数只在 DeepSeek 官方 endpoint 或 `deepseek-*` 模型名下自动注入：generation 默认关闭 thinking，decision 默认开启 thinking；`reasoning_effort=high` 只在对应链路开启 thinking 时作为顶层请求参数发送。
 - 不引入 provider 专属 `json_schema` 或 Responses API。
 - `json_object` 可以使用通用兼容层的对象强约束。
@@ -60,11 +60,13 @@
 - provider / 模型没有遵守声明的响应形状；
 - 业务代码自身的后续处理错误。
 
-业务层 fallback 规则：
+以下是保留算法库的内容级 fallback。科研 worker 的 `RecordedClient` 会把供应商请求异常和结构化契约异常转成 `ProviderFailed`，绕过这些 fallback，并保存失败记录；预算通过 `BudgetReached` 独立终止，不记为供应商故障。方法内关闭隐式重试。`trace.json` 记录调用和响应，费用字段为 null；result、tree 和最终回答报告中的 token 账本覆盖全部调用。
+
+保留算法库的 fallback 规则：
 
 - `Questioner.generate_candidates()`：失败时回退到默认问题列表。
-- `Checker.review_question()`：在 `CHECKER__FAIL_OPEN=true` 时回退到 fail-open 结果。
-- `Checker.dedupe_facts()`：在 `CHECKER__FAIL_OPEN=true` 时保留全部新事实。
+- `Checker.review_question()`：在 `checker.fail_open=true` 时回退到 fail-open 结果。
+- `Checker.dedupe_facts()`：在 `checker.fail_open=true` 时保留全部新事实。
 - `Compressor.extract_facts()`：失败时回退到规则提取事实。
 - `Integrator._suggest_next_steps()`：失败时回退到内置建议。
 - `Integrator._extract_key_insights()`：失败时返回空列表。
@@ -82,7 +84,7 @@
 2. Prompt 中必须把目标形状写死，并给出最小示例。
 3. 在模块层只消费 `CompletionResponse.structured_content`，不要重复 `json.loads()`。
 4. 同步更新：
-   - `src/backend/llm/client_interface.py`
+   - `src/project/dqt/llm/client_interface.py`
    - 相关模块测试
    - 本文档
 5. 若新增真实 provider 验证路径，同时补 `tests/e2e/` 中的 contract smoke。
